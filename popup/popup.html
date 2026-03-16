@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spotify AI Artist Blocker</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green:   #1ed760;
+      --green-d: #17b554;
+      --red:     #e8475f;
+      --red-d:   #c73a50;
+      --bg:      #121212;
+      --bg-2:    #1a1a1a;
+      --bg-3:    #282828;
+      --text:    #ffffff;
+      --muted:   #a7a7a7;
+      --faint:   #535353;
+      --radius:  8px;
+    }
+
+    html { width: 320px; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Circular Std', CircularSp, -apple-system, BlinkMacSystemFont,
+                   'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 13px;
+      line-height: 1.4;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      background: #000;
+      border-bottom: 2px solid var(--green);
+    }
+    .header-icon-wrap {
+      width: 36px; height: 36px;
+      background: var(--green);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .header-title { font-size: 13px; font-weight: 700; color: var(--text); }
+    .header-sub   { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    /* ── Warning ── */
+    .warning {
+      margin: 12px 16px 0;
+      padding: 10px 12px;
+      background: #2a1f00;
+      color: #f5a623;
+      border-radius: var(--radius);
+      font-size: 11px;
+    }
+
+    /* ── Section ── */
+    .section { padding: 12px 16px; }
+
+    .section-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .7px;
+      color: var(--faint);
+      margin-bottom: 8px;
+    }
+
+    /* ── Stats ── */
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .stat-card {
+      background: var(--bg-2);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+    }
+    .stat-value {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--green);
+      line-height: 1;
+    }
+    .stat-label {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 3px;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+    }
+
+    .last-run-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 11px;
+      background: var(--bg-2);
+      border-radius: var(--radius);
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 8px;
+    }
+    .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--faint);
+      flex-shrink: 0;
+    }
+    .dot.active { background: var(--green); }
+
+    /* ── Divider ── */
+    .divider {
+      height: 1px;
+      background: var(--bg-3);
+      margin: 0 16px;
+    }
+
+    /* ── Now playing ── */
+    .now-playing-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--bg-2);
+      border-radius: var(--radius);
+      padding: 10px;
+      min-height: 68px;
+      margin-bottom: 10px;
+    }
+    .now-playing-card.empty {
+      justify-content: center;
+    }
+
+    /* Cover: fixed 52x52, rounded corners, subtle border */
+    .cover {
+      width: 52px; height: 52px;
+      border-radius: 6px;
+      object-fit: cover;
+      flex-shrink: 0;
+      background: var(--bg-3);
+      border: 1px solid rgba(255,255,255,.08);
+      display: block;
+    }
+    .cover-ph {
+      width: 52px; height: 52px;
+      border-radius: 6px;
+      background: var(--bg-3);
+      border: 1px solid rgba(255,255,255,.08);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .np-info { flex: 1; overflow: hidden; }
+    .np-track {
+      font-weight: 700;
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .np-artist {
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 3px;
+    }
+    .np-empty { font-size: 12px; color: var(--faint); }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border: none;
+      border-radius: 500px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 9px 16px;
+      transition: background .15s, transform .1s, box-shadow .15s;
+      text-decoration: none;
+      white-space: nowrap;
+      line-height: 1;
+      font-family: inherit;
+      letter-spacing: .2px;
+    }
+    .btn:active  { transform: scale(.97); }
+    .btn:disabled { opacity: .3; cursor: default; pointer-events: none; }
+
+    .btn-green { background: var(--green); color: #000; }
+    .btn-green:hover { background: var(--green-d); }
+
+    .btn-ghost { background: var(--bg-3); color: var(--text); }
+    .btn-ghost:hover { background: #303030; }
+
+    /* Report button: red, prominent */
+    .btn-report {
+      background: var(--red);
+      color: #fff;
+      font-size: 13px;
+      padding: 11px 16px;
+      border-radius: var(--radius);
+      box-shadow: 0 2px 12px rgba(232,71,95,.35);
+    }
+    .btn-report:hover:not(:disabled) {
+      background: var(--red-d);
+      box-shadow: 0 2px 16px rgba(232,71,95,.5);
+    }
+    .btn-report:disabled { box-shadow: none; }
+
+    .btn-full { width: 100%; }
+    .btn-sm   { padding: 7px 14px; font-size: 11px; }
+
+    /* ── Spinner ── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 12px; height: 12px;
+      border: 2px solid rgba(0,0,0,.25);
+      border-top-color: #000;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+
+    .run-note {
+      font-size: 10px;
+      color: var(--faint);
+      text-align: center;
+      margin-top: 5px;
+    }
+
+    /* ── Progress bar ── */
+    .progress-wrap {
+      margin-top: 8px;
+      margin-bottom: 4px;
+    }
+    .progress-bar-bg {
+      width: 100%;
+      height: 4px;
+      background: var(--bg-3);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--green);
+      border-radius: 2px;
+      width: 0%;
+      transition: width .3s ease;
+    }
+    .progress-label {
+      font-size: 10px;
+      color: var(--muted);
+      text-align: center;
+      margin-top: 4px;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      padding: 8px 16px 13px;
+      text-align: center;
+      font-size: 10px;
+      color: var(--faint);
+    }
+    .footer a { color: var(--green); text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+  <!-- Header: black bg, green underline, white text -->
+  <div class="header">
+    <div class="header-icon-wrap">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="#000" aria-hidden="true">
+        <path d="M6 12c0-1.296.41-2.496 1.11-3.477l8.366 8.368A6 6 0 0 1 6 12m10.89 3.476L8.524 7.11a6 6 0 0 1 8.367 8.367z"/>
+        <path d="M1 12C1 5.925 5.925 1 12 1s11 4.925 11 11-4.925 11-11 11S1 18.075 1 12m11-8a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/>
+      </svg>
+    </div>
+    <div>
+      <div class="header-title">Spotify AI Artist Blocker</div>
+      <div class="header-sub">Keeping your music human 🎵</div>
+    </div>
+  </div>
+
+  <!-- Warning: Spotify not open -->
+  <div id="el-warning" class="warning" style="display:none">
+    ⚠️ Open <strong>Spotify Web Player</strong> to use all features.
+  </div>
+
+  <!-- ── Blocklist stats + Run ── -->
+  <div class="section">
+    <div class="section-label">Blocklist</div>
+
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-value" id="el-blocked">—</div>
+        <div class="stat-label">Artists blocked</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="el-csv">—</div>
+        <div class="stat-label">On the list</div>
+      </div>
+    </div>
+
+    <div class="last-run-row">
+      <div class="dot" id="el-dot"></div>
+      <span id="el-lastrun">Loading…</span>
+    </div>
+
+    <button class="btn btn-green btn-full" id="el-run" type="button">🔄 Run now</button>
+    <div id="el-progress" class="progress-wrap" style="display:none">
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="el-progress-fill"></div>
+      </div>
+      <div class="progress-label" id="el-progress-label">Starting…</div>
+    </div>
+    <div class="run-note" id="el-runnote">Runs automatically every 24 h · and on Spotify page load</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ── Now Playing ── -->
+  <div class="section">
+    <div class="section-label">Now Playing</div>
+
+    <div class="now-playing-card empty" id="el-npcard">
+      <span class="np-empty">Loading…</span>
+    </div>
+
+    <!-- Prominent red report button -->
+    <button class="btn btn-report btn-full" id="el-report" type="button" disabled>
+      🚨 Report as AI Artist on GitHub
+    </button>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ── Extension repo ── -->
+  <div class="section" style="padding-bottom:10px">
+    <a class="btn btn-ghost btn-full btn-sm"
+       href="https://github.com/trevonerd/spotify-ai-blocker-chrome-extension"
+       target="_blank" rel="noopener">
+      ⭐ Extension on GitHub
+    </a>
+  </div>
+
+  <!-- Footer disclaimer -->
+  <div class="footer">
+    Based on <a href="https://github.com/CennoxX/spotify-ai-blocker" target="_blank" rel="noopener">CennoxX/spotify-ai-blocker</a> · MIT License · <span id="el-version" style="opacity:.5"></span>
+  </div>
+
+  <script type="module" src="popup.ts"></script>
+</body>
+</html>

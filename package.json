@@ -1,0 +1,39 @@
+{
+  "name": "spotify-ai-blocker-chrome-extension",
+  "version": "0.4.0",
+  "description": "Chrome extension that automatically blocks AI-generated artists on Spotify using a community-maintained list.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "biome check .",
+    "format": "biome format .",
+    "test:ts": "tsc --noEmit",
+    "test": "vitest",
+    "prepare": "husky install"
+  },
+  "keywords": [
+    "chrome-extension",
+    "spotify",
+    "ai-blocker",
+    "vite",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.7",
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
+    "@crxjs/vite-plugin": "^2.4.0",
+    "@types/chrome": "^0.1.37",
+    "@types/node": "^25.5.0",
+    "@vitest/coverage-v8": "^4.1.0",
+    "husky": "^9.1.7",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.0",
+    "vitest": "^4.1.0"
+  }
+}
