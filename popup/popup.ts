@@ -53,6 +53,10 @@ async function loadState(): Promise<ExtensionState> {
   return chrome.storage.local.get(["blockedIds", "lastRunAt", "lastRunCount", "csvCache"]);
 }
 
+function setCsvLoading(): void {
+  elCsv.textContent = "Loading…";
+}
+
 const elWarning = $("el-warning");
 const elBlocked = $("el-blocked");
 const elCsv = $("el-csv");
@@ -206,6 +210,15 @@ async function init(): Promise<void> {
   }
 
   renderStats(state);
+
+  // If CSV is not yet loaded, ask background to fetch it once and refresh stats.
+  if (!state.csvCache?.data) {
+    setCsvLoading();
+    chrome.runtime.sendMessage({ type: "FETCH_CSV", force: false }, () => {
+      // Ignore errors; just try to refresh stats if CSV arrived.
+      void loadState().then(renderStats);
+    });
+  }
 
   const { blockProgress } = (await chrome.storage.local.get("blockProgress")) as {
     blockProgress?: { current: number; total: number; status: string };

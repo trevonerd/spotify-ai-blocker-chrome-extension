@@ -40,9 +40,19 @@ function scheduleAlarm(): void {
 
 chrome.runtime.onInstalled.addListener(() => {
   scheduleAlarm();
+  // Preload CSV on install so popup stats have data even before first run.
+  void fetchCsv(false).catch(() => {
+    // Ignore failures; popup can trigger another fetch later.
+  });
 });
 
-chrome.runtime.onStartup.addListener(scheduleAlarm);
+chrome.runtime.onStartup.addListener(() => {
+  scheduleAlarm();
+  // Refresh CSV cache on browser startup (if stale).
+  void fetchCsv(false).catch(() => {
+    // Ignore failures; popup can trigger another fetch later.
+  });
+});
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME) {

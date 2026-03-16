@@ -7,9 +7,9 @@
  */
 
 ((): void => {
-  // Inject page-script into the real page context.
+  // Inject the compiled page-script bundle into the real page context.
   const script = document.createElement("script");
-  script.src = chrome.runtime.getURL("src/page-script.ts");
+  script.src = chrome.runtime.getURL("assets/page-script.js");
   (document.head || document.documentElement).appendChild(script);
 
   // page-script → extension bridge.

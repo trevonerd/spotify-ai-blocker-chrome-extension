@@ -6,7 +6,21 @@ export default defineConfig({
   plugins: [crx({ manifest })],
   build: {
     outDir: "dist",
-    sourcemap: true,
+    sourcemap: false,
+    rollupOptions: {
+      input: {
+        // Ensure the page script is compiled into a JS asset we can inject.
+        "page-script": "src/page-script.ts",
+      },
+      output: {
+        entryFileNames: (chunk) => {
+          if (chunk.name === "page-script") {
+            return "assets/page-script.js";
+          }
+          return "assets/[name]-[hash].js";
+        },
+      },
+    },
   },
   test: {
     environment: "node",
