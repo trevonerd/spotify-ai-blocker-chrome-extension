@@ -281,19 +281,32 @@ import { parseCsv } from "./utils/csv";
       const artistUrl = window.location.href;
 
       const nameSelectors = [
+        '[data-testid="adaptiveEntityTitle"]',
         '[data-testid="artist-page-hero-title"]',
         '[data-testid="artist-page-hero"] [data-testid="entityTitle"]',
         '[data-testid="top-result-card"] [data-testid="entityTitle"]',
-        "h1",
+        '[data-testid="artist-page"] h1',
         ".artist-names",
       ];
       const nameEl = nameSelectors
         .map((s) => document.querySelector<HTMLElement>(s))
         .find((el) => el != null);
       const artistName = nameEl?.innerText?.trim() ?? null;
+      console.log(`[AI Blocker] Artist page report — name: ${artistName ?? "not found"}, id: ${artistId ?? "not found"}`);
+
+      const trackSelectors = [
+        '[data-testid="tracklist-row"] a[href*="/track/"]',
+        'section a[href*="/track/"]',
+      ];
+      const trackEl = trackSelectors
+        .map((s) => document.querySelector<HTMLAnchorElement>(s))
+        .find((el) => el != null);
+      const exampleTrackUrl = trackEl?.href ?? "";
+      console.log(`[AI Blocker] Artist page report — track: ${exampleTrackUrl || "not found"}`);
 
       if (!artistId || !artistName) {
         showToast("⚠️ Could not detect artist info");
+        console.warn("[AI Blocker] Artist page report — detection failed, opening issue without full data");
         return;
       }
 
@@ -312,7 +325,7 @@ import { parseCsv } from "./utils/csv";
         `&title=${encodeURIComponent(`[AI-Artist] ${artistName ?? ""}`)}` +
         `&artist_name=${encodeURIComponent(artistName ?? "")}` +
         `&artist_url=${encodeURIComponent(artistUrl ?? "")}` +
-        `&example_track_url=${encodeURIComponent("")}`;
+        `&example_track_url=${encodeURIComponent(exampleTrackUrl)}`;
       window.open(url, "_blank", "noopener");
     });
 
