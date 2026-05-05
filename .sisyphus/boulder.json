@@ -1,0 +1,50 @@
+{
+  "active_plan": "/Users/m.trevisani/repos/trevonerd/spotify-ai-blocker-chrome-extension/.sisyphus/plans/fix-now-playing-detection.md",
+  "started_at": "2026-05-05T10:00:22.993Z",
+  "session_ids": [
+    "ses_2088b23afffe12DIQyAM915W9x"
+  ],
+  "plan_name": "fix-now-playing-detection",
+  "worktree_path": null,
+  "session_origins": {
+    "ses_2088b23afffe12DIQyAM915W9x": "direct"
+  },
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "Add retry polling and fallback selectors to `readNowPlayingFromDOM()`",
+      "session_id": "ses_2086973a6ffewhjumz76C7Cauz",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-05T10:03:47.358Z"
+    },
+    "todo:2": {
+      "task_key": "todo:2",
+      "task_label": "2",
+      "task_title": "Add retry polling and fallback selectors to `getNowPlaying()`",
+      "session_id": "ses_20866c2e1ffeVdaF3EJkmTA9h3",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-05T10:06:24.836Z"
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Manual QA — Now-Playing Detection (Popup)**",
+      "session_id": "ses_2083f4c2affeBWuu74Hii9xAh6",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-05T10:50:00.131Z"
+    },
+    "final-wave:f2": {
+      "task_key": "final-wave:f2",
+      "task_label": "F2",
+      "task_title": "**Manual QA — Popup Now-Playing Detection (Real Spotify)**",
+      "session_id": "ses_2082fe5c6ffe6iDYY51KA6K6KY",
+      "agent": "Sisyphus-Junior",
+      "category": "writing",
+      "updated_at": "2026-05-05T11:08:11.962Z"
+    }
+  }
+}

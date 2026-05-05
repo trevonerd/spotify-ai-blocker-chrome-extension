@@ -1,4 +1,5 @@
 import { parseCsv } from "./utils/csv";
+import { buildReportUrl, buildTrackUrl, extractArtistId, extractUsername } from "./utils/spotify";
 
 /**
  * Page script entrypoint.
@@ -87,10 +88,7 @@ import { parseCsv } from "./utils/csv";
   ): void => bridgeNotify("BLOCKED_UPDATE", { blockedIds, lastRunAt, lastRunCount });
 
   function getUsername(): string | null {
-    const key = Object.keys(window.localStorage).find(
-      (k) => k.includes(":") && !k.startsWith("anonymous:"),
-    );
-    return key?.split(":")[0] ?? null;
+    return extractUsername(Object.keys(window.localStorage));
   }
 
   interface NowPlayingInfo {
@@ -140,7 +138,7 @@ import { parseCsv } from "./utils/csv";
             artistName: artistEl.innerText?.trim() || null,
             artistId,
             artistUrl: artistEl.href ?? null,
-            trackUrl: trackUrl ? `https://open.spotify.com/track/${trackUrl}` : null,
+            trackUrl: trackUrl ? buildTrackUrl(trackUrl) : null,
           });
           return;
         }
@@ -277,7 +275,7 @@ import { parseCsv } from "./utils/csv";
     });
 
     btn.addEventListener("click", async () => {
-      const artistId = window.location.pathname.match(/\/artist\/([^/?]+)/)?.[1] ?? null;
+      const artistId = extractArtistId(window.location.pathname);
       const artistUrl = window.location.href;
 
       const nameSelectors = [
@@ -292,7 +290,9 @@ import { parseCsv } from "./utils/csv";
         .map((s) => document.querySelector<HTMLElement>(s))
         .find((el) => el != null);
       const artistName = nameEl?.innerText?.trim() ?? null;
-      console.log(`[AI Blocker] Artist page report — name: ${artistName ?? "not found"}, id: ${artistId ?? "not found"}`);
+      console.log(
+        `[AI Blocker] Artist page report — name: ${artistName ?? "not found"}, id: ${artistId ?? "not found"}`,
+      );
 
       const trackSelectors = [
         '[data-testid="tracklist-row"] a[href*="/track/"]',
@@ -306,7 +306,9 @@ import { parseCsv } from "./utils/csv";
 
       if (!artistId || !artistName) {
         showToast("⚠️ Could not detect artist info");
-        console.warn("[AI Blocker] Artist page report — detection failed, opening issue without full data");
+        console.warn(
+          "[AI Blocker] Artist page report — detection failed, opening issue without full data",
+        );
         return;
       }
 
@@ -319,13 +321,7 @@ import { parseCsv } from "./utils/csv";
         }
       }
 
-      const url =
-        "https://github.com/CennoxX/spotify-ai-blocker/issues/new" +
-        "?template=ai-artist.yml" +
-        `&title=${encodeURIComponent(`[AI-Artist] ${artistName ?? ""}`)}` +
-        `&artist_name=${encodeURIComponent(artistName ?? "")}` +
-        `&artist_url=${encodeURIComponent(artistUrl ?? "")}` +
-        `&example_track_url=${encodeURIComponent(exampleTrackUrl)}`;
+      const url = buildReportUrl({ artistName, artistUrl, exampleTrackUrl });
       window.open(url, "_blank", "noopener");
     });
 
@@ -469,13 +465,11 @@ import { parseCsv } from "./utils/csv";
         }
       }
 
-      const url =
-        "https://github.com/CennoxX/spotify-ai-blocker/issues/new" +
-        "?template=ai-artist.yml" +
-        `&title=${encodeURIComponent(`[AI-Artist] ${artistName ?? ""}`)}` +
-        `&artist_name=${encodeURIComponent(artistName ?? "")}` +
-        `&artist_url=${encodeURIComponent(artistUrl ?? "")}` +
-        `&example_track_url=${encodeURIComponent(trackUrl ?? "")}`;
+      const url = buildReportUrl({
+        artistName: artistName ?? "",
+        artistUrl: artistUrl ?? "",
+        exampleTrackUrl: trackUrl ?? "",
+      });
       window.open(url, "_blank", "noopener");
     }
   });

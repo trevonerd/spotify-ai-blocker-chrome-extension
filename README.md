@@ -1,5 +1,7 @@
 # Spotify AI Blocker — Chrome Extension
 
+[![CI](https://github.com/trevonerd/spotify-ai-blocker-chrome-extension/actions/workflows/ci.yml/badge.svg)](https://github.com/trevonerd/spotify-ai-blocker-chrome-extension/actions/workflows/ci.yml)
+
 If you've been using Spotify for a while you've probably noticed something annoying: playlists and radio stations full of artists with names like "Relaxing Piano Mood Vol. 3" or "Deep Focus Study Beats" that don't really exist. They're AI-generated, uploaded in bulk, and Spotify keeps pushing them because they cost zero in royalties. The result is that you end up listening to fake music without even knowing it.
 
 There's already a great Tampermonkey script by [CennoxX](https://github.com/CennoxX/spotify-ai-blocker) that solves this using a crowdsourced list of AI artists. The problem is that Tampermonkey is a power-user thing — you need to install an extension, paste a script, figure out how it works... most people give up before finishing.

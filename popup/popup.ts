@@ -101,7 +101,7 @@ function renderStats(state: ExtensionState): void {
 type NowPlayingWithCover = NowPlaying | null;
 
 function renderNowPlaying(info: NowPlayingWithCover): void {
-  if (!info || !info.artistId) {
+  if (!info?.artistId) {
     elNpcard.className = "now-playing-card empty";
     elNpcard.innerHTML = '<span class="np-empty">Nothing playing right now</span>';
     elReport.disabled = true;
