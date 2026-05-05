@@ -100,24 +100,66 @@ import { parseCsv } from "./utils/csv";
     trackUrl: string | null;
   }
 
-  function getNowPlaying(): NowPlayingInfo {
-    const artistEl = document.querySelector<HTMLAnchorElement>(
-      '.Root [data-testid="now-playing-bar"] [data-testid="context-item-info-artist"]',
-    );
-    const trackEl = document.querySelector<HTMLAnchorElement>('[data-context-item-type="track"]');
-    const trackUrl = trackEl
-      ? `https://open.spotify.com/track/${trackEl.href.split("track%3A").pop()}`
-      : null;
+  async function getNowPlaying(): Promise<NowPlayingInfo> {
+    return new Promise((resolve) => {
+      const artistSelectors = [
+        '.Root [data-testid="now-playing-bar"] [data-testid="context-item-info-artist"]',
+        '[data-testid="now-playing-bar"] [data-testid="context-item-info-artist"]',
+        '[data-testid="now-playing-widget"] [data-testid="context-item-info-artist"]',
+      ];
+      const trackSelectors = [
+        '[data-context-item-type="track"]',
+        '[data-testid="now-playing-bar"] [data-testid="context-link"][href*="track"]',
+      ];
 
-    const artistHref = artistEl?.href ?? "";
-    const artistId = artistHref.match(/\/artist\/([^\s?]+)/i)?.[1] ?? null;
+      let attempts = 0;
+      const maxAttempts = 25;
+      const intervalMs = 200;
 
-    return {
-      artistName: artistEl?.innerText?.trim() || null,
-      artistId,
-      artistUrl: artistEl?.href ?? null,
-      trackUrl,
-    };
+      function tryQuery(): void {
+        attempts++;
+
+        const artistEl = artistSelectors
+          .map((s) => document.querySelector<HTMLAnchorElement>(s))
+          .find((el) => el != null);
+        const trackEl = trackSelectors
+          .map((s) => document.querySelector<HTMLAnchorElement>(s))
+          .find((el) => el != null);
+
+        if (artistEl && trackEl) {
+          const artistHref = artistEl.href ?? "";
+          const artistId = artistHref.match(/\/artist\/([^\s?]+)/i)?.[1] ?? null;
+          const trackUrl = trackEl.href?.split("track%3A").pop();
+
+          if (!artistId) {
+            setTimeout(tryQuery, intervalMs);
+            return;
+          }
+
+          resolve({
+            artistName: artistEl.innerText?.trim() || null,
+            artistId,
+            artistUrl: artistEl.href ?? null,
+            trackUrl: trackUrl ? `https://open.spotify.com/track/${trackUrl}` : null,
+          });
+          return;
+        }
+
+        if (attempts >= maxAttempts) {
+          resolve({
+            artistName: null,
+            artistId: null,
+            artistUrl: null,
+            trackUrl: null,
+          });
+          return;
+        }
+
+        setTimeout(tryQuery, intervalMs);
+      }
+
+      tryQuery();
+    });
   }
 
   async function callBlockApi(ids: string[]): Promise<boolean> {
@@ -201,6 +243,102 @@ import { parseCsv } from "./utils/csv";
         root.remove();
       }, 400);
     }, 4000);
+  }
+
+  function injectArtistPageButton(): void {
+    document.getElementById("sab-report-btn")?.remove();
+
+    const btn = document.createElement("button");
+    btn.id = "sab-report-btn";
+    btn.type = "button";
+    btn.style.cssText =
+      "position:fixed;bottom:100px;right:24px;z-index:2147483647;" +
+      "display:flex;align-items:center;gap:8px;" +
+      "background:#1ed760;color:#000;" +
+      "padding:10px 18px;border-radius:500px;border:none;cursor:pointer;" +
+      "box-shadow:0 4px 16px rgba(0,0,0,.4);" +
+      "font-family:'Circular Std',CircularSp,'Helvetica Neue',Helvetica,Arial,sans-serif;" +
+      "font-size:13px;font-weight:700;white-space:nowrap;" +
+      "transition:transform .15s ease,box-shadow .15s ease;";
+
+    btn.innerHTML =
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="#000" aria-hidden="true">' +
+      '<path d="M6 12c0-1.296.41-2.496 1.11-3.477l8.366 8.368A6 6 0 0 1 6 12m10.89 3.476L8.524 7.11a6 6 0 0 1 8.367 8.367z"/>' +
+      '<path d="M1 12C1 5.925 5.925 1 12 1s11 4.925 11 11-4.925 11-11 11S1 18.075 1 12m11-8a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/>' +
+      "</svg>Report AI Artist";
+
+    btn.addEventListener("mouseenter", () => {
+      btn.style.transform = "scale(1.04)";
+      btn.style.boxShadow = "0 6px 20px rgba(0,0,0,.5)";
+    });
+    btn.addEventListener("mouseleave", () => {
+      btn.style.transform = "scale(1)";
+      btn.style.boxShadow = "0 4px 16px rgba(0,0,0,.4)";
+    });
+
+    btn.addEventListener("click", async () => {
+      const artistId = window.location.pathname.match(/\/artist\/([^/?]+)/)?.[1] ?? null;
+      const artistUrl = window.location.href;
+
+      const nameSelectors = [
+        '[data-testid="artist-page-hero-title"]',
+        '[data-testid="artist-page-hero"] [data-testid="entityTitle"]',
+        '[data-testid="top-result-card"] [data-testid="entityTitle"]',
+        "h1",
+        ".artist-names",
+      ];
+      const nameEl = nameSelectors
+        .map((s) => document.querySelector<HTMLElement>(s))
+        .find((el) => el != null);
+      const artistName = nameEl?.innerText?.trim() ?? null;
+
+      if (!artistId || !artistName) {
+        showToast("⚠️ Could not detect artist info");
+        return;
+      }
+
+      const { blockedIds, lastRunAt, lastRunCount } = await loadStorage();
+      const blockedSet = new Set(blockedIds);
+      if (!blockedSet.has(artistId)) {
+        if (await blockBatchWithRetry([artistId])) {
+          blockedSet.add(artistId);
+          saveStorage([...blockedSet], lastRunAt, lastRunCount + 1);
+        }
+      }
+
+      const url =
+        "https://github.com/CennoxX/spotify-ai-blocker/issues/new" +
+        "?template=ai-artist.yml" +
+        `&title=${encodeURIComponent(`[AI-Artist] ${artistName ?? ""}`)}` +
+        `&artist_name=${encodeURIComponent(artistName ?? "")}` +
+        `&artist_url=${encodeURIComponent(artistUrl ?? "")}` +
+        `&example_track_url=${encodeURIComponent("")}`;
+      window.open(url, "_blank", "noopener");
+    });
+
+    document.body.appendChild(btn);
+  }
+
+  function setupArtistPageObserver(): void {
+    const initialPath = window.location.pathname;
+    if (initialPath.startsWith("/artist/")) {
+      injectArtistPageButton();
+    }
+
+    let lastPath = initialPath;
+    const observer = new MutationObserver(() => {
+      const currentPath = window.location.pathname;
+      if (currentPath !== lastPath) {
+        lastPath = currentPath;
+        if (currentPath.startsWith("/artist/")) {
+          injectArtistPageButton();
+        } else {
+          document.getElementById("sab-report-btn")?.remove();
+        }
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
   }
 
   async function main(forced = false): Promise<void> {
@@ -303,7 +441,7 @@ import { parseCsv } from "./utils/csv";
     }
 
     if (type === "CMD_REPORT_ARTIST") {
-      const { artistName, artistId, artistUrl, trackUrl } = getNowPlaying();
+      const { artistName, artistId, artistUrl, trackUrl } = await getNowPlaying();
       if (!artistId) {
         showToast("⚠️ No artist playing right now");
         return;
@@ -354,4 +492,6 @@ import { parseCsv } from "./utils/csv";
   };
 
   console.log("[AI Blocker] page-script ready — waiting for Spotify auth token…");
+
+  setupArtistPageObserver();
 })();

@@ -190,35 +190,78 @@ async function getNowPlayingWithCover(tabId: number | undefined): Promise<NowPla
 }
 
 /**
- * Reads now-playing information directly from the Spotify DOM.
+ * Reads now-playing information from the Spotify DOM.
+ * Retries with fallback selectors to handle race conditions
+ * where the now-playing bar hasn't updated yet.
  *
- * @returns Basic metadata about the current artist and track.
+ * @returns A Promise resolving to metadata about the current artist and track,
+ *          or null-valued object if nothing is playing after max retries.
  */
-function readNowPlayingFromDOM(): NowPlayingInfo {
-  const artistEl = document.querySelector<HTMLAnchorElement>(
-    '.Root [data-testid="now-playing-bar"] [data-testid="context-item-info-artist"]',
-  );
-  const trackEl = document.querySelector<HTMLAnchorElement>('[data-context-item-type="track"]');
-  const trackUrl = trackEl
-    ? `https://open.spotify.com/track/${trackEl.href.split("track%3A").pop()}`
-    : null;
-
-  const coverEl =
-    document.querySelector<HTMLImageElement>(
+function readNowPlayingFromDOM(): Promise<NowPlayingInfo> {
+  return new Promise((resolve) => {
+    const artistSelectors = [
+      '.Root [data-testid="now-playing-bar"] [data-testid="context-item-info-artist"]',
+      '[data-testid="now-playing-bar"] [data-testid="context-item-info-artist"]',
+      '[data-testid="context-item-info-artist"]',
+    ];
+    const trackSelectors = [
+      '[data-context-item-type="track"]',
+      '[data-testid="now-playing-bar"] [data-testid="context-link"][href*="track"]',
+    ];
+    const coverSelectors = [
       '[data-testid="now-playing-bar"] [data-testid="CoverSlotCollapsed--container"] img',
-    ) ??
-    document.querySelector<HTMLImageElement>('[data-testid="now-playing-bar"] img[aria-label]') ??
-    document.querySelector<HTMLImageElement>('[data-testid="now-playing-bar"] img');
+      '[data-testid="now-playing-bar"] img[aria-label]',
+      '[data-testid="now-playing-bar"] img',
+    ];
 
-  const artistHref = artistEl?.href ?? "";
-  const artistId = artistHref.match(/\/artist\/([^\s?]+)/i)?.[1] ?? null;
+    let attempts = 0;
+    const maxAttempts = 25;
+    const intervalMs = 200;
 
-  return {
-    artistName: artistEl?.innerText?.trim() || null,
-    artistId,
-    artistUrl: artistEl?.href ?? null,
-    trackName: trackEl?.textContent?.trim() ?? null,
-    trackUrl,
-    coverUrl: coverEl?.src ?? null,
-  };
+    function tryQuery(): void {
+      attempts++;
+
+      const artistEl = artistSelectors
+        .map((s) => document.querySelector<HTMLAnchorElement>(s))
+        .find((el) => el != null);
+      const trackEl = trackSelectors
+        .map((s) => document.querySelector<HTMLAnchorElement>(s))
+        .find((el) => el != null);
+      const coverEl = coverSelectors
+        .map((s) => document.querySelector<HTMLImageElement>(s))
+        .find((el) => el != null);
+
+      if (artistEl && trackEl) {
+        const artistHref = artistEl.href ?? "";
+        const artistId = artistHref.match(/\/artist\/([^\s?]+)/i)?.[1] ?? null;
+        const trackUrl = trackEl.href?.split("track%3A").pop();
+
+        resolve({
+          artistName: artistEl.innerText?.trim() || null,
+          artistId,
+          artistUrl: artistEl.href ?? null,
+          trackName: trackEl.textContent?.trim() ?? null,
+          trackUrl: trackUrl ? `https://open.spotify.com/track/${trackUrl}` : null,
+          coverUrl: coverEl?.src ?? null,
+        });
+        return;
+      }
+
+      if (attempts >= maxAttempts) {
+        resolve({
+          artistName: null,
+          artistId: null,
+          artistUrl: null,
+          trackName: null,
+          trackUrl: null,
+          coverUrl: null,
+        });
+        return;
+      }
+
+      setTimeout(tryQuery, intervalMs);
+    }
+
+    tryQuery();
+  });
 }

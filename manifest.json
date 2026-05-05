@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Spotify AI Blocker",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Chrome extension that automatically blocks AI-generated artists on Spotify using a community-maintained list.",
 
   "permissions": ["storage", "contextMenus", "scripting", "tabs", "alarms"],
