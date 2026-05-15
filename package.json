@@ -32,6 +32,7 @@
     "submit:init": "wxt submit init",
     "submit:dry-run": "wxt submit --dry-run --chrome-zip .output/*-chrome.zip --edge-zip .output/*-edge.zip",
     "submit": "wxt submit --chrome-zip .output/*-chrome.zip --edge-zip .output/*-edge.zip",
+    "repomix:update": "pnpm dlx repomix@latest",
     "postinstall": "wxt prepare",
     "prepare": "husky install"
   },

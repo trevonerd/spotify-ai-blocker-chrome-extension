@@ -1,0 +1,3238 @@
+This file is a merged representation of a subset of the codebase, containing files not matching ignore patterns, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching these patterns are excluded: .sisyphus/**, .output/**, .wxt/**, node_modules/**, dist/**
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+.github/
+  workflows/
+    ci.yml
+.husky/
+  commit-msg
+  pre-commit
+public/
+  icon-128.png
+  icon-16.png
+  icon-48.png
+scripts/
+  check-generated-manifest.mjs
+  check-wxt-purity.mjs
+src/
+  entrypoints/
+    popup/
+      dom.ts
+      index.html
+      main.ts
+      style.css
+      view-model.test.ts
+      view-model.ts
+    background.ts
+    page-script.ts
+    spotify.content.ts
+  shared/
+    messages.test.ts
+    messages.ts
+    storage.test.ts
+    storage.ts
+  utils/
+    csv.test.ts
+    csv.ts
+    html.test.ts
+    html.ts
+    spotify.test.ts
+    spotify.ts
+.commitlintrc.cjs
+.gitignore
+biome.json
+CHANGELOG.md
+LICENSE
+package.json
+README.md
+repomix.config.json
+tsconfig.json
+wxt.config.ts
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="repomix.config.json">
+{
+  "output": {
+    "style": "xml",
+    "filePath": "repomix-output.xml"
+  },
+  "ignore": {
+    "customPatterns": [
+      ".sisyphus/**",
+      ".output/**",
+      ".wxt/**",
+      "node_modules/**",
+      "dist/**"
+    ]
+  }
+}
+</file>
+
+<file path=".husky/commit-msg">
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+pnpm exec commitlint --edit "$1"
+</file>
+
+<file path=".husky/pre-commit">
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+pnpm lint && pnpm test
+</file>
+
+<file path="scripts/check-generated-manifest.mjs">
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const requiredPermissions = ["storage", "contextMenus", "scripting", "tabs", "alarms"];
+const requiredHosts = [
+  "https://open.spotify.com/*",
+  "https://spclient.wg.spotify.com/*",
+  "https://raw.githubusercontent.com/*",
+];
+
+const targets = ["chrome-mv3", "edge-mv3"];
+
+for (const target of targets) {
+  const manifestPath = join(process.cwd(), ".output", target, "manifest.json");
+
+  if (!existsSync(manifestPath)) {
+    console.error(`Generated manifest not found at ${manifestPath}`);
+    process.exit(1);
+  }
+
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+
+  for (const permission of requiredPermissions) {
+    if (!manifest.permissions?.includes(permission)) {
+      console.error(`${target}: missing permission: ${permission}`);
+      process.exit(1);
+    }
+  }
+
+  for (const host of requiredHosts) {
+    if (!manifest.host_permissions?.includes(host)) {
+      console.error(`${target}: missing host permission: ${host}`);
+      process.exit(1);
+    }
+  }
+
+  if (manifest.manifest_version !== 3) {
+    console.error(`${target}: expected manifest_version 3, got ${manifest.manifest_version}`);
+    process.exit(1);
+  }
+
+  if (manifest.background?.service_worker !== "background.js") {
+    console.error(`${target}: expected WXT background service worker at background.js`);
+    process.exit(1);
+  }
+
+  if (manifest.action?.default_popup !== "popup.html") {
+    console.error(`${target}: expected WXT popup at popup.html`);
+    process.exit(1);
+  }
+
+  const hasSpotifyContentScript = manifest.content_scripts?.some((script) =>
+    script.matches?.includes("https://open.spotify.com/*"),
+  );
+  if (!hasSpotifyContentScript) {
+    console.error(`${target}: missing Spotify content script`);
+    process.exit(1);
+  }
+
+  const exposesPageScript = manifest.web_accessible_resources?.some((resource) =>
+    resource.resources?.includes("page-script.js"),
+  );
+  if (!exposesPageScript) {
+    console.error(`${target}: page-script.js is not web-accessible`);
+    process.exit(1);
+  }
+}
+
+console.log("Generated Chrome and Edge manifests have the required WXT MV3 shape.");
+</file>
+
+<file path="scripts/check-wxt-purity.mjs">
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+
+const root = process.cwd();
+
+const forbiddenPaths = [
+  "manifest.json",
+  "vite.config.ts",
+  "vite.config.js",
+  "popup",
+  "src/background.ts",
+  "src/injector.ts",
+  "src/page-script.ts",
+  "dist",
+  "icons",
+];
+
+const sourceRoots = ["src", "scripts", ".github"];
+const sourceFileExtensions = new Set([
+  ".ts",
+  ".tsx",
+  ".js",
+  ".mjs",
+  ".cjs",
+  ".json",
+  ".yml",
+  ".yaml",
+  ".md",
+]);
+const allowedChromeMentions = new Set(["CHANGELOG.md"]);
+const chromeApiPattern =
+  /\bchrome\.(action|alarms|contextMenus|i18n|notifications|permissions|runtime|scripting|storage|tabs|webNavigation|windows)\b/;
+
+const failures = [];
+
+for (const forbiddenPath of forbiddenPaths) {
+  if (existsSync(join(root, forbiddenPath))) {
+    failures.push(`Legacy path still exists: ${forbiddenPath}`);
+  }
+}
+
+for (const file of walkSourceFiles(root)) {
+  const rel = relative(root, file);
+  if (rel === "scripts/check-wxt-purity.mjs") {
+    continue;
+  }
+
+  const text = readFileSync(file, "utf8");
+
+  if (!allowedChromeMentions.has(rel) && chromeApiPattern.test(text)) {
+    failures.push(`Direct chrome.* API usage found in ${rel}`);
+  }
+
+  if (/crxjs|CRXJS/.test(text)) {
+    failures.push(`CRXJS reference found in ${rel}`);
+  }
+}
+
+if (failures.length > 0) {
+  console.error("WXT purity check failed:");
+  for (const failure of failures) {
+    console.error(`- ${failure}`);
+  }
+  process.exit(1);
+}
+
+console.log("WXT purity check passed.");
+
+function walkSourceFiles(dir) {
+  const files = [];
+  const entries = readdirSync(dir);
+
+  for (const entry of entries) {
+    if (entry === "node_modules" || entry === ".git" || entry === ".output" || entry === ".wxt") {
+      continue;
+    }
+
+    const fullPath = join(dir, entry);
+    const rel = relative(root, fullPath);
+    const stats = statSync(fullPath);
+
+    if (stats.isDirectory()) {
+      if (
+        sourceRoots.some((sourceRoot) => rel === sourceRoot || rel.startsWith(`${sourceRoot}/`))
+      ) {
+        files.push(...walkSourceFiles(fullPath));
+      }
+      continue;
+    }
+
+    if (
+      sourceRoots.some((sourceRoot) => rel.startsWith(`${sourceRoot}/`)) ||
+      rel === "package.json" ||
+      rel === "tsconfig.json" ||
+      rel === "README.md" ||
+      rel === "CHANGELOG.md" ||
+      rel === "wxt.config.ts"
+    ) {
+      const extension = getExtension(entry);
+      if (sourceFileExtensions.has(extension)) {
+        files.push(fullPath);
+      }
+    }
+  }
+
+  return files;
+}
+
+function getExtension(filename) {
+  const index = filename.lastIndexOf(".");
+  return index === -1 ? "" : filename.slice(index);
+}
+</file>
+
+<file path="src/entrypoints/popup/dom.ts">
+export interface PopupRefs {
+  warning: HTMLElement;
+  blocked: HTMLElement;
+  csv: HTMLElement;
+  dot: HTMLElement;
+  lastRun: HTMLElement;
+  run: HTMLButtonElement;
+  runNote: HTMLElement;
+  confirmRun: HTMLElement;
+  confirmRunYes: HTMLButtonElement;
+  confirmRunNo: HTMLButtonElement;
+  progress: HTMLElement;
+  progressFill: HTMLDivElement;
+  progressLabel: HTMLElement;
+  nowPlayingCard: HTMLElement;
+  report: HTMLButtonElement;
+  version: HTMLElement | null;
+}
+
+export function getPopupRefs(): PopupRefs {
+  return {
+    warning: requireElement("el-warning"),
+    blocked: requireElement("el-blocked"),
+    csv: requireElement("el-csv"),
+    dot: requireElement("el-dot"),
+    lastRun: requireElement("el-lastrun"),
+    run: requireElement("el-run") as HTMLButtonElement,
+    runNote: requireElement("el-runnote"),
+    confirmRun: requireElement("el-confirm-run"),
+    confirmRunYes: requireElement("el-confirm-run-yes") as HTMLButtonElement,
+    confirmRunNo: requireElement("el-confirm-run-no") as HTMLButtonElement,
+    progress: requireElement("el-progress"),
+    progressFill: requireElement("el-progress-fill") as HTMLDivElement,
+    progressLabel: requireElement("el-progress-label"),
+    nowPlayingCard: requireElement("el-npcard"),
+    report: requireElement("el-report") as HTMLButtonElement,
+    version: document.getElementById("el-version"),
+  };
+}
+
+function requireElement(id: string): HTMLElement {
+  const el = document.getElementById(id);
+  if (!el) {
+    throw new Error(`Missing element with id "${id}"`);
+  }
+  return el;
+}
+</file>
+
+<file path="src/entrypoints/popup/index.html">
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spotify AI Artist Blocker</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="header">
+      <div class="header-icon-wrap" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="#000">
+          <title>Spotify AI Blocker</title>
+          <path
+            d="M6 12c0-1.296.41-2.496 1.11-3.477l8.366 8.368A6 6 0 0 1 6 12m10.89 3.476L8.524 7.11a6 6 0 0 1 8.367 8.367z"
+          />
+          <path
+            d="M1 12C1 5.925 5.925 1 12 1s11 4.925 11 11-4.925 11-11 11S1 18.075 1 12m11-8a8 8 0 1 0 0 16 8 8 0 0 0 0-16"
+          />
+        </svg>
+      </div>
+      <div>
+        <div class="header-title">Spotify AI Artist Blocker</div>
+        <div class="header-sub">Keeping your music human</div>
+      </div>
+    </header>
+
+    <div id="el-warning" class="warning" hidden>
+      Open <strong>Spotify Web Player</strong> to use all features.
+    </div>
+
+    <section class="section" aria-labelledby="blocklist-title">
+      <div class="section-label" id="blocklist-title">Blocklist</div>
+
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-value" id="el-blocked">-</div>
+          <div class="stat-label">Artists blocked</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="el-csv">-</div>
+          <div class="stat-label">On the list</div>
+        </div>
+      </div>
+
+      <div class="last-run-row">
+        <div class="dot" id="el-dot" aria-hidden="true"></div>
+        <span id="el-lastrun">Loading</span>
+      </div>
+
+      <button class="btn btn-green btn-full" id="el-run" type="button">Run now</button>
+
+      <div id="el-confirm-run" class="confirm-run" hidden>
+        <div class="confirm-copy">Run the blocker now?</div>
+        <div class="confirm-actions">
+          <button class="btn btn-green btn-compact" id="el-confirm-run-yes" type="button">
+            Run
+          </button>
+          <button class="btn btn-ghost btn-compact" id="el-confirm-run-no" type="button">
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      <div id="el-progress" class="progress-wrap" hidden>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="el-progress-fill"></div>
+        </div>
+        <div class="progress-label" id="el-progress-label">Starting...</div>
+      </div>
+      <div class="run-note" id="el-runnote">Automatic every 24 h and on Spotify page load</div>
+    </section>
+
+    <div class="divider"></div>
+
+    <section class="section" aria-labelledby="now-playing-title">
+      <div class="section-label" id="now-playing-title">Now Playing</div>
+
+      <div class="now-playing-card empty" id="el-npcard">
+        <span class="np-empty">Loading</span>
+      </div>
+
+      <button class="btn btn-report btn-full" id="el-report" type="button" disabled>
+        Report as AI Artist
+      </button>
+    </section>
+
+    <div class="divider"></div>
+
+    <section class="section repo-section">
+      <a
+        class="btn btn-ghost btn-full btn-sm"
+        href="https://github.com/trevonerd/spotify-ai-blocker-chrome-extension"
+        target="_blank"
+        rel="noopener"
+      >
+        Extension on GitHub
+      </a>
+    </section>
+
+    <footer class="footer">
+      Based on
+      <a href="https://github.com/CennoxX/spotify-ai-blocker" target="_blank" rel="noopener">
+        CennoxX/spotify-ai-blocker
+      </a>
+      · MIT License · <span id="el-version"></span>
+    </footer>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
+</file>
+
+<file path="src/entrypoints/popup/main.ts">
+import { type Browser, browser } from "wxt/browser";
+import type { NowPlayingInfo, ProgressPayload, RuntimeMessage } from "../../shared/messages";
+import { isProgressStatus } from "../../shared/messages";
+import { loadBlockProgress, loadExtensionState } from "../../shared/storage";
+import { escHtml } from "../../utils/html";
+import { getPopupRefs, type PopupRefs } from "./dom";
+import { countCsvRows, formatInteger, getLastRunText, getProgressView } from "./view-model";
+
+type SpotifyTab = Browser.tabs.Tab;
+
+let refs: PopupRefs;
+let spotifyTab: SpotifyTab | null = null;
+let nowPlaying: NowPlayingInfo | null = null;
+let resetTimer: number | undefined;
+
+async function getSpotifyTab(): Promise<SpotifyTab | null> {
+  const tabs = await browser.tabs.query({ url: "https://open.spotify.com/*" });
+  return tabs[0] ?? null;
+}
+
+async function fetchNowPlaying(tabId: number): Promise<NowPlayingInfo | null> {
+  try {
+    return ((await browser.runtime.sendMessage({
+      type: "GET_NOW_PLAYING",
+      tabId,
+    } satisfies RuntimeMessage)) ?? null) as NowPlayingInfo | null;
+  } catch {
+    return null;
+  }
+}
+
+function renderStats(state: Awaited<ReturnType<typeof loadExtensionState>>): void {
+  refs.blocked.textContent = formatInteger(
+    Array.isArray(state.blockedIds) ? state.blockedIds.length : 0,
+  );
+
+  const csvCount = countCsvRows(state.csvCache?.data);
+  refs.csv.textContent = csvCount == null ? "-" : formatInteger(csvCount);
+
+  const lastRun = getLastRunText(state);
+  refs.dot.classList.toggle("active", lastRun.isFresh);
+  refs.lastRun.textContent = lastRun.text;
+}
+
+function renderNowPlaying(info: NowPlayingInfo | null): void {
+  nowPlaying = info;
+
+  if (!info?.artistId) {
+    refs.nowPlayingCard.className = "now-playing-card empty";
+    refs.nowPlayingCard.innerHTML = '<span class="np-empty">Nothing playing right now</span>';
+    refs.report.disabled = true;
+    refs.report.textContent = "Report as AI Artist";
+    return;
+  }
+
+  refs.nowPlayingCard.className = "now-playing-card";
+  const coverHtml = info.coverDataUrl
+    ? `<img class="cover" src="${info.coverDataUrl}" alt="" />`
+    : `<div class="cover-ph" aria-hidden="true">
+         <svg width="20" height="20" viewBox="0 0 24 24" fill="#535353">
+           <path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/>
+         </svg>
+       </div>`;
+
+  refs.nowPlayingCard.innerHTML = `
+    ${coverHtml}
+    <div class="np-info">
+      <div class="np-track" title="${escHtml(info.trackName)}">${escHtml(
+        info.trackName ?? "Unknown track",
+      )}</div>
+      <div class="np-artist" title="${escHtml(info.artistName)}">${escHtml(
+        info.artistName ?? "Unknown artist",
+      )}</div>
+    </div>`;
+
+  refs.report.disabled = false;
+  refs.report.textContent = "Report as AI Artist";
+}
+
+function updateProgress(progress: ProgressPayload): void {
+  const view = getProgressView(progress.current, progress.total, progress.status);
+  refs.progress.hidden = !view.visible;
+  refs.progressFill.style.width = `${view.percent}%`;
+  refs.progressLabel.textContent = view.label;
+  refs.run.disabled = view.runDisabled;
+  refs.run.textContent = view.runLabel;
+
+  if (progress.status === "finished") {
+    void loadExtensionState().then(renderStats);
+    window.clearTimeout(resetTimer);
+    resetTimer = window.setTimeout(() => {
+      refs.progress.hidden = true;
+      refs.progressFill.style.width = "0%";
+      refs.run.disabled = false;
+      refs.run.textContent = "Run now";
+      refs.runNote.textContent = "Automatic every 24 h and on Spotify page load";
+    }, 3000);
+  }
+}
+
+function showRunConfirmation(): void {
+  if (!spotifyTab?.id) {
+    refs.runNote.textContent = "Open Spotify Web Player first.";
+    refs.warning.hidden = false;
+    return;
+  }
+
+  refs.confirmRun.hidden = false;
+  refs.run.disabled = true;
+  refs.runNote.textContent = "Manual runs can call Spotify many times.";
+}
+
+function hideRunConfirmation(): void {
+  refs.confirmRun.hidden = true;
+  refs.run.disabled = false;
+  refs.runNote.textContent = "Automatic every 24 h and on Spotify page load";
+}
+
+async function forceRun(): Promise<void> {
+  if (!spotifyTab?.id) return;
+
+  refs.confirmRun.hidden = true;
+  refs.run.disabled = true;
+  refs.run.textContent = "Running...";
+  refs.runNote.textContent = "Blocking AI artists...";
+
+  try {
+    await browser.tabs.sendMessage(spotifyTab.id, { type: "FORCE_BLOCK_RUN" });
+  } catch {
+    refs.run.disabled = false;
+    refs.run.textContent = "Run now";
+    refs.runNote.textContent = "Spotify tab is not ready yet. Reload Spotify and try again.";
+  }
+}
+
+async function reportCurrentArtist(): Promise<void> {
+  if (!nowPlaying || !spotifyTab?.id) return;
+
+  refs.report.disabled = true;
+  refs.report.textContent = "Reporting + blocking...";
+
+  try {
+    await browser.tabs.sendMessage(spotifyTab.id, { type: "CMD_REPORT_ARTIST" });
+    refs.report.textContent = "Reported";
+  } catch {
+    refs.report.textContent = "Spotify tab is not ready";
+  }
+
+  window.setTimeout(() => {
+    refs.report.textContent = "Report as AI Artist";
+    refs.report.disabled = !nowPlaying?.artistId;
+  }, 3000);
+}
+
+async function hydrateCsvStats(): Promise<void> {
+  try {
+    await browser.runtime.sendMessage({ type: "FETCH_CSV", force: false } satisfies RuntimeMessage);
+    renderStats(await loadExtensionState());
+  } catch {
+    refs.csv.textContent = "-";
+    refs.runNote.textContent = "Could not refresh the blocklist. Try again later.";
+  }
+}
+
+async function init(): Promise<void> {
+  refs = getPopupRefs();
+  refs.version?.replaceChildren(`v${browser.runtime.getManifest().version}`);
+
+  const [tab, state] = await Promise.all([getSpotifyTab(), loadExtensionState()]);
+  spotifyTab = tab;
+  refs.warning.hidden = Boolean(spotifyTab);
+  renderStats(state);
+
+  if (!state.csvCache?.data) {
+    refs.csv.textContent = "Loading";
+    void hydrateCsvStats();
+  }
+
+  const progress = await loadBlockProgress();
+  if (progress && isProgressStatus(progress.status) && progress.status !== "finished") {
+    updateProgress(progress);
+  }
+
+  if (spotifyTab?.id != null) {
+    renderNowPlaying(await fetchNowPlaying(spotifyTab.id));
+  } else {
+    renderNowPlaying(null);
+  }
+
+  refs.run.addEventListener("click", showRunConfirmation);
+  refs.confirmRunYes.addEventListener("click", () => {
+    void forceRun();
+  });
+  refs.confirmRunNo.addEventListener("click", hideRunConfirmation);
+  refs.report.addEventListener("click", () => {
+    void reportCurrentArtist();
+  });
+
+  browser.runtime.onMessage.addListener((message) => {
+    const maybeProgress = message as Partial<RuntimeMessage>;
+    if (maybeProgress.type === "PROGRESS_UPDATE" && isProgressStatus(maybeProgress.status)) {
+      updateProgress({
+        current: maybeProgress.current ?? 0,
+        total: maybeProgress.total ?? 0,
+        status: maybeProgress.status,
+      });
+    }
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  void init();
+});
+</file>
+
+<file path="src/entrypoints/popup/style.css">
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --green: #1ed760;
+  --green-dark: #17b554;
+  --red: #e8475f;
+  --red-dark: #c73a50;
+  --black: #050505;
+  --bg: #121212;
+  --surface: #1a1a1a;
+  --surface-2: #282828;
+  --surface-3: #303030;
+  --text: #ffffff;
+  --muted: #a7a7a7;
+  --faint: #676767;
+  --warn-bg: #2a1f00;
+  --warn: #f5a623;
+  --radius: 8px;
+}
+
+html {
+  width: 326px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: CircularSp, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+a {
+  font: inherit;
+}
+
+body [hidden] {
+  display: none;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--black);
+  border-bottom: 2px solid var(--green);
+}
+
+.header-icon-wrap {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  place-items: center;
+  background: var(--green);
+  border-radius: 50%;
+}
+
+.header-title {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.header-sub {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.warning {
+  margin: 12px 16px 0;
+  padding: 10px 12px;
+  color: var(--warn);
+  background: var(--warn-bg);
+  border: 1px solid rgba(245, 166, 35, 0.25);
+  border-radius: var(--radius);
+  font-size: 11px;
+}
+
+.section {
+  padding: 12px 16px;
+}
+
+.repo-section {
+  padding-bottom: 10px;
+}
+
+.section-label {
+  margin-bottom: 8px;
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.stat-card {
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius);
+}
+
+.stat-value {
+  color: var(--green);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.stat-label {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.last-run-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+  padding: 8px 11px;
+  color: var(--muted);
+  background: var(--surface);
+  border-radius: var(--radius);
+  font-size: 11px;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  background: var(--faint);
+  border-radius: 50%;
+}
+
+.dot.active {
+  background: var(--green);
+  box-shadow: 0 0 0 4px rgba(30, 215, 96, 0.12);
+}
+
+.divider {
+  height: 1px;
+  margin: 0 16px;
+  background: var(--surface-2);
+}
+
+.now-playing-card {
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius);
+}
+
+.now-playing-card.empty {
+  justify-content: center;
+}
+
+.cover,
+.cover-ph {
+  display: block;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  background: var(--surface-2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+}
+
+.cover {
+  object-fit: cover;
+}
+
+.cover-ph {
+  display: grid;
+  place-items: center;
+}
+
+.np-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.np-track,
+.np-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.np-track {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.np-artist {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.np-empty {
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  gap: 6px;
+  padding: 9px 16px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  text-decoration: none;
+  transition:
+    background 0.15s,
+    transform 0.1s,
+    box-shadow 0.15s,
+    opacity 0.15s;
+  white-space: nowrap;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn:disabled {
+  cursor: default;
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.btn-green {
+  color: #000;
+  background: var(--green);
+}
+
+.btn-green:hover:not(:disabled) {
+  background: var(--green-dark);
+}
+
+.btn-ghost {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.btn-ghost:hover {
+  background: var(--surface-3);
+}
+
+.btn-report {
+  color: #fff;
+  background: var(--red);
+  border-radius: var(--radius);
+  box-shadow: 0 2px 12px rgba(232, 71, 95, 0.32);
+  font-size: 13px;
+}
+
+.btn-report:hover:not(:disabled) {
+  background: var(--red-dark);
+  box-shadow: 0 2px 16px rgba(232, 71, 95, 0.48);
+}
+
+.btn-full {
+  width: 100%;
+}
+
+.btn-sm {
+  min-height: 30px;
+  padding: 7px 14px;
+  font-size: 11px;
+}
+
+.btn-compact {
+  min-height: 30px;
+  padding: 7px 12px;
+  font-size: 11px;
+}
+
+.confirm-run {
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+}
+
+.confirm-copy {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.confirm-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.run-note {
+  margin-top: 6px;
+  color: var(--faint);
+  font-size: 10px;
+  text-align: center;
+}
+
+.progress-wrap {
+  margin: 8px 0 4px;
+}
+
+.progress-bar-bg {
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  background: var(--surface-2);
+  border-radius: 2px;
+}
+
+.progress-bar-fill {
+  width: 0%;
+  height: 100%;
+  background: var(--green);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.progress-label {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  text-align: center;
+}
+
+.footer {
+  padding: 8px 16px 13px;
+  color: var(--faint);
+  font-size: 10px;
+  text-align: center;
+}
+
+.footer a {
+  color: var(--green);
+  text-decoration: none;
+}
+
+.footer a:hover {
+  text-decoration: underline;
+}
+</file>
+
+<file path="src/entrypoints/popup/view-model.test.ts">
+import { describe, expect, it } from "vitest";
+import { countCsvRows, getLastRunText, getProgressView } from "./view-model";
+
+describe("popup view model", () => {
+  it("counts non-empty CSV artist rows after the header", () => {
+    expect(countCsvRows("name,id\nA,1\n\nB,2\n")).toBe(2);
+    expect(countCsvRows(undefined)).toBeNull();
+  });
+
+  it("formats fresh and stale last-run text", () => {
+    const today = new Date("2026-05-14T12:00:00.000Z");
+
+    expect(getLastRunText({ lastRunAt: "2026-05-14", lastRunCount: 3 }, today)).toEqual({
+      text: "Last run: today · +3 new",
+      isFresh: true,
+    });
+    expect(getLastRunText({ lastRunAt: "2026-05-13", lastRunCount: 0 }, today)).toEqual({
+      text: "Last run: 2026-05-13",
+      isFresh: false,
+    });
+  });
+
+  it("builds stable progress labels", () => {
+    expect(getProgressView(12, 50, "running")).toMatchObject({
+      visible: true,
+      percent: 24,
+      runDisabled: true,
+    });
+    expect(getProgressView(0, 0, "finished")).toMatchObject({
+      visible: false,
+      label: "Already up to date",
+      runDisabled: false,
+    });
+  });
+});
+</file>
+
+<file path="src/entrypoints/popup/view-model.ts">
+import type { ProgressStatus } from "../../shared/messages";
+import type { ExtensionState } from "../../shared/storage";
+
+export function countCsvRows(csv: string | undefined): number | null {
+  if (!csv) return null;
+  return csv
+    .split("\n")
+    .slice(1)
+    .filter((line) => line.trim()).length;
+}
+
+export function formatInteger(value: number): string {
+  return value.toLocaleString();
+}
+
+export function getLastRunText(
+  state: Pick<ExtensionState, "lastRunAt" | "lastRunCount">,
+  now = new Date(),
+): { text: string; isFresh: boolean } {
+  if (!state.lastRunAt) {
+    return { text: "Never run yet", isFresh: false };
+  }
+
+  const today = now.toISOString().slice(0, 10);
+  if (state.lastRunAt !== today) {
+    return { text: `Last run: ${state.lastRunAt}`, isFresh: false };
+  }
+
+  return {
+    text: `Last run: today${state.lastRunCount ? ` · +${state.lastRunCount} new` : " · up to date"}`,
+    isFresh: true,
+  };
+}
+
+export function getProgressView(
+  current: number,
+  total: number,
+  status: ProgressStatus,
+): {
+  visible: boolean;
+  percent: number;
+  label: string;
+  runLabel: string;
+  runDisabled: boolean;
+} {
+  if (status === "started") {
+    return {
+      visible: true,
+      percent: 0,
+      label: "Starting...",
+      runLabel: "Running...",
+      runDisabled: true,
+    };
+  }
+
+  if (status === "running") {
+    const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+    return {
+      visible: true,
+      percent,
+      label: `${formatInteger(current)} / ${formatInteger(total)} artists blocked`,
+      runLabel: "Running...",
+      runDisabled: true,
+    };
+  }
+
+  return {
+    visible: current > 0,
+    percent: 100,
+    label: current > 0 ? `Done. ${formatInteger(current)} artists blocked` : "Already up to date",
+    runLabel: "Run now",
+    runDisabled: false,
+  };
+}
+</file>
+
+<file path="src/entrypoints/background.ts">
+import { browser } from "wxt/browser";
+import { defineBackground } from "wxt/utils/define-background";
+import type {
+  FetchCsvResponse,
+  NowPlayingInfo,
+  PageCommand,
+  ProgressPayload,
+  RuntimeMessage,
+} from "../shared/messages";
+import { isProgressStatus } from "../shared/messages";
+import {
+  loadBlockProgress,
+  loadCsvCache,
+  saveBlockProgress,
+  saveCsvCache,
+} from "../shared/storage";
+
+const CSV_URL =
+  "https://raw.githubusercontent.com/CennoxX/spotify-ai-blocker/refs/heads/main/SpotifyAiArtists.csv";
+const ALARM_NAME = "daily-block-check";
+const CONTEXT_MENU_ID = "report-ai-artist";
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+export default defineBackground({
+  type: "module",
+  main() {
+    void resetStaleProgress();
+    registerLifecycleHandlers();
+    registerRuntimeHandlers();
+    registerTabHandlers();
+    registerContextMenuHandler();
+  },
+});
+
+async function resetStaleProgress(): Promise<void> {
+  const progress = await loadBlockProgress();
+  if (progress?.status === "running" || progress?.status === "started") {
+    await saveBlockProgress({ current: 0, total: 0, status: "finished" });
+    await browser.action.setBadgeText({ text: "" });
+  }
+}
+
+function registerLifecycleHandlers(): void {
+  browser.runtime.onInstalled.addListener(() => {
+    void bootstrapBackground();
+  });
+
+  browser.runtime.onStartup.addListener(() => {
+    void bootstrapBackground();
+  });
+
+  browser.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === ALARM_NAME) {
+      void triggerOnAllSpotifyTabs("TRIGGER_BLOCK_RUN");
+    }
+  });
+}
+
+async function bootstrapBackground(): Promise<void> {
+  await Promise.all([
+    scheduleAlarm(),
+    ensureContextMenu(),
+    fetchCsv(false).catch(() => {
+      // Popup and page script can retry later; startup should stay quiet.
+    }),
+  ]);
+}
+
+async function scheduleAlarm(): Promise<void> {
+  const existing = await browser.alarms.get(ALARM_NAME);
+  if (!existing) {
+    await browser.alarms.create(ALARM_NAME, {
+      delayInMinutes: 1,
+      periodInMinutes: 24 * 60,
+    });
+  }
+}
+
+async function ensureContextMenu(): Promise<void> {
+  await browser.contextMenus.removeAll();
+  browser.contextMenus.create({
+    id: CONTEXT_MENU_ID,
+    title: "Report current Spotify artist as AI",
+    contexts: ["page", "selection", "link"],
+    documentUrlPatterns: ["https://open.spotify.com/*"],
+  });
+}
+
+function registerContextMenuHandler(): void {
+  browser.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === CONTEXT_MENU_ID && tab?.id != null) {
+      void sendToTab(tab.id, "CMD_REPORT_ARTIST");
+    }
+  });
+}
+
+function registerTabHandlers(): void {
+  browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (changeInfo.status === "complete" && tab.url?.startsWith("https://open.spotify.com/")) {
+      setTimeout(() => {
+        void sendToTab(tabId, "TRIGGER_BLOCK_RUN");
+      }, 3000);
+    }
+  });
+}
+
+function registerRuntimeHandlers(): void {
+  browser.runtime.onMessage.addListener((rawMessage, _sender, sendResponse) => {
+    const response = handleRuntimeMessage(rawMessage as RuntimeMessage);
+
+    if (response instanceof Promise) {
+      void response.then(sendResponse);
+      return true;
+    }
+
+    return response;
+  });
+}
+
+export function handleRuntimeMessage(
+  message: RuntimeMessage,
+): boolean | Promise<FetchCsvResponse | NowPlayingInfo | null> {
+  if (message.type === "FETCH_CSV") {
+    return fetchCsv(message.force === true).catch((err: Error) => ({ error: err.message }));
+  }
+
+  if (message.type === "GET_NOW_PLAYING") {
+    return getNowPlayingWithCover(message.tabId).catch(() => null);
+  }
+
+  if (message.type === "PROGRESS_UPDATE") {
+    const { current, total, status } = message;
+    if (!isProgressStatus(status)) {
+      return false;
+    }
+
+    void updateBadgeAndProgress({ current, total, status });
+    return false;
+  }
+
+  return false;
+}
+
+async function triggerOnAllSpotifyTabs(type: PageCommand): Promise<void> {
+  const tabs = await browser.tabs.query({ url: "https://open.spotify.com/*" });
+  await Promise.all(tabs.map((tab) => (tab.id == null ? undefined : sendToTab(tab.id, type))));
+}
+
+async function sendToTab(tabId: number, type: PageCommand): Promise<void> {
+  try {
+    await browser.tabs.sendMessage(tabId, { type });
+  } catch {
+    // Spotify tabs can briefly exist before the content script is ready.
+  }
+}
+
+async function updateBadgeAndProgress(progress: {
+  current: number;
+  total: number;
+  status: ProgressPayload["status"];
+}): Promise<void> {
+  if (progress.status === "started" || progress.status === "running") {
+    await browser.action.setBadgeText({ text: "..." });
+    await browser.action.setBadgeBackgroundColor({ color: "#ffa500" });
+  } else {
+    await browser.action.setBadgeText({ text: "" });
+  }
+
+  await saveBlockProgress(progress);
+}
+
+async function fetchCsv(force = false): Promise<FetchCsvResponse> {
+  const cache = await loadCsvCache();
+
+  if (!force && cache?.data && cache.fetchedAt && Date.now() - cache.fetchedAt < ONE_DAY_MS) {
+    return { csv: cache.data, fromCache: true };
+  }
+
+  const resp = await fetch(CSV_URL);
+  if (!resp.ok) {
+    throw new Error(`GitHub returned HTTP ${resp.status}`);
+  }
+
+  const data = await resp.text();
+  await saveCsvCache({ data, fetchedAt: Date.now() });
+  return { csv: data, fromCache: false };
+}
+
+async function getNowPlayingWithCover(tabId: number | undefined): Promise<NowPlayingInfo | null> {
+  if (tabId == null) {
+    return null;
+  }
+
+  let info: NowPlayingInfo | null = null;
+  try {
+    const results = await browser.scripting.executeScript({
+      target: { tabId },
+      func: readNowPlayingFromDOM,
+    });
+    info = (results?.[0]?.result as NowPlayingInfo | undefined) ?? null;
+  } catch {
+    return null;
+  }
+
+  if (!info?.coverUrl) {
+    return info;
+  }
+
+  try {
+    const resp = await fetch(info.coverUrl);
+    const buffer = await resp.arrayBuffer();
+    const type = resp.headers.get("content-type") || "image/jpeg";
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+    info.coverDataUrl = `data:${type};base64,${b64}`;
+  } catch {
+    info.coverDataUrl = null;
+  }
+  delete info.coverUrl;
+
+  return info;
+}
+
+function readNowPlayingFromDOM(): Promise<NowPlayingInfo> {
+  return new Promise((resolve) => {
+    const artistSelectors = [
+      '.Root [data-testid="now-playing-bar"] [data-testid="context-item-info-artist"]',
+      '[data-testid="now-playing-bar"] [data-testid="context-item-info-artist"]',
+      '[data-testid="context-item-info-artist"]',
+    ];
+    const trackSelectors = [
+      '[data-context-item-type="track"]',
+      '[data-testid="now-playing-bar"] [data-testid="context-link"][href*="track"]',
+    ];
+    const coverSelectors = [
+      '[data-testid="now-playing-bar"] [data-testid="CoverSlotCollapsed--container"] img',
+      '[data-testid="now-playing-bar"] img[aria-label]',
+      '[data-testid="now-playing-bar"] img',
+    ];
+
+    let attempts = 0;
+    const maxAttempts = 25;
+    const intervalMs = 200;
+
+    function tryQuery(): void {
+      attempts += 1;
+
+      const artistEl = artistSelectors
+        .map((s) => document.querySelector<HTMLAnchorElement>(s))
+        .find((el) => el != null);
+      const trackEl = trackSelectors
+        .map((s) => document.querySelector<HTMLAnchorElement>(s))
+        .find((el) => el != null);
+      const coverEl = coverSelectors
+        .map((s) => document.querySelector<HTMLImageElement>(s))
+        .find((el) => el != null);
+
+      if (artistEl && trackEl) {
+        const artistHref = artistEl.href ?? "";
+        const artistId = artistHref.match(/\/artist\/([^\s?]+)/i)?.[1] ?? null;
+        const trackUrl = trackEl.href?.split("track%3A").pop();
+
+        resolve({
+          artistName: artistEl.innerText?.trim() || null,
+          artistId,
+          artistUrl: artistEl.href ?? null,
+          trackName: trackEl.textContent?.trim() ?? null,
+          trackUrl: trackUrl ? `https://open.spotify.com/track/${trackUrl}` : null,
+          coverUrl: coverEl?.src ?? null,
+        });
+        return;
+      }
+
+      if (attempts >= maxAttempts) {
+        resolve({
+          artistName: null,
+          artistId: null,
+          artistUrl: null,
+          trackName: null,
+          trackUrl: null,
+          coverUrl: null,
+        });
+        return;
+      }
+
+      setTimeout(tryQuery, intervalMs);
+    }
+
+    tryQuery();
+  });
+}
+</file>
+
+<file path="src/entrypoints/page-script.ts">
+import { defineUnlistedScript } from "wxt/utils/define-unlisted-script";
+import { EXTENSION_BRIDGE_NS, PAGE_BRIDGE_NS } from "../shared/messages";
+import { parseCsv } from "../utils/csv";
+import { buildReportUrl, buildTrackUrl, extractArtistId, extractUsername } from "../utils/spotify";
+
+/**
+ * Page script entrypoint.
+ *
+ * @remarks
+ * Runs in the real Spotify page context (not the isolated content-script
+ * world). Intercepts `window.fetch` to capture the auth token and orchestrates
+ * the AI-artist blocking flow via Spotify's internal APIs.
+ */
+
+export default defineUnlistedScript((): void => {
+  const BLOCK_ENDPOINT = "https://spclient.wg.spotify.com/collection/v2/write?market=from_token";
+  const BATCH_SIZE = 50;
+  const BATCH_DELAY = (): number => 600 + Math.random() * 300;
+  const MAX_RETRIES = 3;
+
+  let authHeader: string | null = null;
+  let hasRun = false;
+
+  const sleep = (ms: number): Promise<void> =>
+    new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
+
+  const todayISO = (): string => new Date().toISOString().slice(0, 10);
+
+  const makeReqId = (): string => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  function bridgeRequest<TPayload, TResponse>(
+    type: string,
+    payload: TPayload | null = null,
+  ): Promise<TResponse> {
+    return new Promise((resolve, reject) => {
+      const reqId = makeReqId();
+      const replyType = `${type}_REPLY`;
+
+      const timer = setTimeout(() => {
+        window.removeEventListener("message", handler);
+        reject(new Error(`[AI Blocker] Bridge timeout: ${type}`));
+      }, 15_000);
+
+      function handler(event: MessageEvent): void {
+        if (event.source !== window) return;
+        if ((event.data as { ns?: string }).ns !== EXTENSION_BRIDGE_NS) return;
+        if ((event.data as { reqId?: string }).reqId !== reqId) return;
+        if ((event.data as { type?: string }).type !== replyType) return;
+        clearTimeout(timer);
+        window.removeEventListener("message", handler);
+        resolve((event.data as { payload: TResponse }).payload);
+      }
+
+      window.addEventListener("message", handler);
+      window.postMessage({ ns: PAGE_BRIDGE_NS, reqId, type, payload }, "*");
+    });
+  }
+
+  const bridgeNotify = <TPayload>(type: string, payload: TPayload | null = null): void => {
+    window.postMessage({ ns: PAGE_BRIDGE_NS, type, payload }, "*");
+  };
+
+  const sendProgress = (current: number, total: number, status: string): void => {
+    bridgeNotify("PROGRESS_UPDATE", { current, total, status });
+  };
+
+  interface StoredState {
+    blockedIds: string[];
+    lastRunAt: string | null;
+    lastRunCount: number;
+  }
+
+  async function loadStorage(): Promise<StoredState> {
+    const data = await bridgeRequest<null, StoredState>("GET_STORAGE");
+    return {
+      blockedIds: Array.isArray(data?.blockedIds) ? data.blockedIds : [],
+      lastRunAt: data?.lastRunAt ?? null,
+      lastRunCount: data?.lastRunCount ?? 0,
+    };
+  }
+
+  const saveStorage = (
+    blockedIds: string[],
+    lastRunAt: string | null,
+    lastRunCount: number,
+  ): void => bridgeNotify("BLOCKED_UPDATE", { blockedIds, lastRunAt, lastRunCount });
+
+  function getUsername(): string | null {
+    return extractUsername(Object.keys(window.localStorage));
+  }
+
+  interface NowPlayingInfo {
+    artistName: string | null;
+    artistId: string | null;
+    artistUrl: string | null;
+    trackUrl: string | null;
+  }
+
+  async function getNowPlaying(): Promise<NowPlayingInfo> {
+    return new Promise((resolve) => {
+      const artistSelectors = [
+        '.Root [data-testid="now-playing-bar"] [data-testid="context-item-info-artist"]',
+        '[data-testid="now-playing-bar"] [data-testid="context-item-info-artist"]',
+        '[data-testid="now-playing-widget"] [data-testid="context-item-info-artist"]',
+      ];
+      const trackSelectors = [
+        '[data-context-item-type="track"]',
+        '[data-testid="now-playing-bar"] [data-testid="context-link"][href*="track"]',
+      ];
+
+      let attempts = 0;
+      const maxAttempts = 25;
+      const intervalMs = 200;
+
+      function tryQuery(): void {
+        attempts++;
+
+        const artistEl = artistSelectors
+          .map((s) => document.querySelector<HTMLAnchorElement>(s))
+          .find((el) => el != null);
+        const trackEl = trackSelectors
+          .map((s) => document.querySelector<HTMLAnchorElement>(s))
+          .find((el) => el != null);
+
+        if (artistEl && trackEl) {
+          const artistHref = artistEl.href ?? "";
+          const artistId = artistHref.match(/\/artist\/([^\s?]+)/i)?.[1] ?? null;
+          const trackUrl = trackEl.href?.split("track%3A").pop();
+
+          if (!artistId) {
+            setTimeout(tryQuery, intervalMs);
+            return;
+          }
+
+          resolve({
+            artistName: artistEl.innerText?.trim() || null,
+            artistId,
+            artistUrl: artistEl.href ?? null,
+            trackUrl: trackUrl ? buildTrackUrl(trackUrl) : null,
+          });
+          return;
+        }
+
+        if (attempts >= maxAttempts) {
+          resolve({
+            artistName: null,
+            artistId: null,
+            artistUrl: null,
+            trackUrl: null,
+          });
+          return;
+        }
+
+        setTimeout(tryQuery, intervalMs);
+      }
+
+      tryQuery();
+    });
+  }
+
+  async function callBlockApi(ids: string[]): Promise<boolean> {
+    const username = getUsername();
+    if (!authHeader || !username) {
+      console.warn("[AI Blocker] Missing auth or username — skipping batch");
+      return false;
+    }
+    try {
+      const resp = await fetch(BLOCK_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          authorization: authHeader,
+        },
+        body: JSON.stringify({
+          username,
+          set: "artistban",
+          items: ids.map((id) => ({ uri: `spotify:artist:${id}` })),
+        }),
+      });
+      if (resp.ok) return true;
+      if (resp.status === 401) {
+        console.warn("[AI Blocker] Auth token expired");
+        authHeader = null;
+      } else {
+        console.warn(`[AI Blocker] Block API returned ${resp.status}`);
+      }
+    } catch (err) {
+      console.error("[AI Blocker] Network error:", err);
+    }
+    return false;
+  }
+
+  async function blockBatchWithRetry(ids: string[]): Promise<boolean> {
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
+      if (await callBlockApi(ids)) return true;
+      if (attempt < MAX_RETRIES) {
+        await sleep(1000 * attempt);
+      }
+    }
+    return false;
+  }
+
+  function showToast(message: string): void {
+    document.getElementById("sab-toast-root")?.remove();
+
+    const root = Object.assign(document.createElement("div"), { id: "sab-toast-root" });
+    root.style.cssText =
+      "position:fixed;bottom:90px;left:50%;transform:translateX(-50%);" +
+      "z-index:2147483647;pointer-events:none;";
+
+    const toast = document.createElement("div");
+    toast.id = "sab-toast";
+    toast.style.cssText =
+      "display:flex;align-items:center;gap:8px;" +
+      "background:#1ed760;color:#000;" +
+      "padding:10px 18px;border-radius:500px;" +
+      "box-shadow:0 4px 24px rgba(0,0,0,.5);" +
+      "font-family:'Circular Std',CircularSp,'Helvetica Neue',Helvetica,Arial,sans-serif;" +
+      "font-size:13px;font-weight:700;white-space:nowrap;" +
+      "opacity:1;transition:opacity .4s ease;";
+
+    const iconWrapper = document.createElement("span");
+    iconWrapper.innerHTML =
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="#000" aria-hidden="true"><path d="M6 12c0-1.296.41-2.496 1.11-3.477l8.366 8.368A6 6 0 0 1 6 12m10.89 3.476L8.524 7.11a6 6 0 0 1 8.367 8.367z"/><path d="M1 12C1 5.925 5.925 1 12 1s11 4.925 11 11-4.925 11-11 11S1 18.075 1 12m11-8a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/></svg>';
+
+    const messageText = document.createElement("span");
+    messageText.textContent = message;
+
+    toast.appendChild(iconWrapper);
+    toast.appendChild(messageText);
+    root.appendChild(toast);
+
+    document.body.appendChild(root);
+    setTimeout(() => {
+      const el = document.getElementById("sab-toast");
+      if (el) el.style.opacity = "0";
+      setTimeout(() => {
+        root.remove();
+      }, 400);
+    }, 4000);
+  }
+
+  function injectArtistPageButton(): void {
+    document.getElementById("sab-report-btn")?.remove();
+
+    const btn = document.createElement("button");
+    btn.id = "sab-report-btn";
+    btn.type = "button";
+    btn.style.cssText =
+      "position:fixed;bottom:100px;right:24px;z-index:2147483647;" +
+      "display:flex;align-items:center;gap:8px;" +
+      "background:#1ed760;color:#000;" +
+      "padding:10px 18px;border-radius:500px;border:none;cursor:pointer;" +
+      "box-shadow:0 4px 16px rgba(0,0,0,.4);" +
+      "font-family:'Circular Std',CircularSp,'Helvetica Neue',Helvetica,Arial,sans-serif;" +
+      "font-size:13px;font-weight:700;white-space:nowrap;" +
+      "transition:transform .15s ease,box-shadow .15s ease;";
+
+    btn.innerHTML =
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="#000" aria-hidden="true">' +
+      '<path d="M6 12c0-1.296.41-2.496 1.11-3.477l8.366 8.368A6 6 0 0 1 6 12m10.89 3.476L8.524 7.11a6 6 0 0 1 8.367 8.367z"/>' +
+      '<path d="M1 12C1 5.925 5.925 1 12 1s11 4.925 11 11-4.925 11-11 11S1 18.075 1 12m11-8a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/>' +
+      "</svg>Report AI Artist";
+
+    btn.addEventListener("mouseenter", () => {
+      btn.style.transform = "scale(1.04)";
+      btn.style.boxShadow = "0 6px 20px rgba(0,0,0,.5)";
+    });
+    btn.addEventListener("mouseleave", () => {
+      btn.style.transform = "scale(1)";
+      btn.style.boxShadow = "0 4px 16px rgba(0,0,0,.4)";
+    });
+
+    btn.addEventListener("click", async () => {
+      const artistId = extractArtistId(window.location.pathname);
+      const artistUrl = window.location.href;
+
+      const nameSelectors = [
+        '[data-testid="adaptiveEntityTitle"]',
+        '[data-testid="artist-page-hero-title"]',
+        '[data-testid="artist-page-hero"] [data-testid="entityTitle"]',
+        '[data-testid="top-result-card"] [data-testid="entityTitle"]',
+        '[data-testid="artist-page"] h1',
+        ".artist-names",
+      ];
+      const nameEl = nameSelectors
+        .map((s) => document.querySelector<HTMLElement>(s))
+        .find((el) => el != null);
+      const artistName = nameEl?.innerText?.trim() ?? null;
+      console.log(
+        `[AI Blocker] Artist page report — name: ${artistName ?? "not found"}, id: ${artistId ?? "not found"}`,
+      );
+
+      const trackSelectors = [
+        '[data-testid="tracklist-row"] a[href*="/track/"]',
+        'section a[href*="/track/"]',
+      ];
+      const trackEl = trackSelectors
+        .map((s) => document.querySelector<HTMLAnchorElement>(s))
+        .find((el) => el != null);
+      const exampleTrackUrl = trackEl?.href ?? "";
+      console.log(`[AI Blocker] Artist page report — track: ${exampleTrackUrl || "not found"}`);
+
+      if (!artistId || !artistName) {
+        showToast("⚠️ Could not detect artist info");
+        console.warn(
+          "[AI Blocker] Artist page report — detection failed, opening issue without full data",
+        );
+        return;
+      }
+
+      const { blockedIds, lastRunAt, lastRunCount } = await loadStorage();
+      const blockedSet = new Set(blockedIds);
+      if (!blockedSet.has(artistId)) {
+        if (await blockBatchWithRetry([artistId])) {
+          blockedSet.add(artistId);
+          saveStorage([...blockedSet], lastRunAt, lastRunCount + 1);
+        }
+      }
+
+      const url = buildReportUrl({ artistName, artistUrl, exampleTrackUrl });
+      window.open(url, "_blank", "noopener");
+    });
+
+    document.body.appendChild(btn);
+  }
+
+  function setupArtistPageObserver(): void {
+    const initialPath = window.location.pathname;
+    if (initialPath.startsWith("/artist/")) {
+      injectArtistPageButton();
+    }
+
+    let lastPath = initialPath;
+    const observer = new MutationObserver(() => {
+      const currentPath = window.location.pathname;
+      if (currentPath !== lastPath) {
+        lastPath = currentPath;
+        if (currentPath.startsWith("/artist/")) {
+          injectArtistPageButton();
+        } else {
+          document.getElementById("sab-report-btn")?.remove();
+        }
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  async function main(forced = false): Promise<void> {
+    if (hasRun && !forced) return;
+    hasRun = true;
+
+    try {
+      console.log(`[AI Blocker] Starting run (forced=${forced})…`);
+
+      const { blockedIds, lastRunAt } = await loadStorage();
+      const blockedSet = new Set(blockedIds);
+      const today = todayISO();
+
+      if (!forced && lastRunAt === today) {
+        console.log("[AI Blocker] Already ran today. Skipping.");
+        return;
+      }
+
+      const result = (await bridgeRequest<
+        { force: boolean },
+        { csv: string; fromCache: boolean } | { error: string }
+      >("FETCH_CSV", { force: forced })) as { csv: string; fromCache: boolean } | { error: string };
+
+      if ("error" in result) {
+        console.error("[AI Blocker] CSV fetch failed:", result.error);
+        return;
+      }
+
+      const allArtists = parseCsv(result.csv);
+      const toBlock = allArtists.filter((a) => !blockedSet.has(a.id));
+
+      console.log(
+        `[AI Blocker] ${allArtists.length} in CSV | ${toBlock.length} new to block` +
+          (result.fromCache ? " (cached)" : " (fresh)"),
+      );
+
+      if (toBlock.length === 0) {
+        saveStorage([...blockedSet], today, 0);
+        console.log("[AI Blocker] Already up to date.");
+        return;
+      }
+
+      sendProgress(0, toBlock.length, "started");
+
+      let successCount = 0;
+      let allSucceeded = true;
+
+      for (let i = 0; i < toBlock.length; i += BATCH_SIZE) {
+        const batch = toBlock.slice(i, i + BATCH_SIZE);
+        const batchIds = batch.map((a) => a.id);
+
+        if (await blockBatchWithRetry(batchIds)) {
+          for (const id of batchIds) blockedSet.add(id);
+          successCount += batchIds.length;
+          sendProgress(successCount, toBlock.length, "running");
+          console.log(
+            `[AI Blocker] ${successCount}/${toBlock.length} blocked\n${batch
+              .map((a) => `  ✗ ${a.name}`)
+              .join("\n")}`,
+          );
+        } else {
+          console.warn(`[AI Blocker] Batch ${Math.floor(i / BATCH_SIZE) + 1} failed`);
+          allSucceeded = false;
+        }
+
+        if (i + BATCH_SIZE < toBlock.length) {
+          await sleep(BATCH_DELAY());
+        }
+      }
+
+      saveStorage([...blockedSet], allSucceeded ? today : lastRunAt, successCount);
+      sendProgress(successCount, toBlock.length, "finished");
+      if (successCount > 0) {
+        showToast(`🤖 ${successCount} AI artist${successCount !== 1 ? "s" : ""} blocked!`);
+      }
+      console.log(`[AI Blocker] Done. ${successCount} new artists blocked.`);
+    } catch (err) {
+      console.error("[AI Blocker] Unexpected error:", err);
+      sendProgress(0, 0, "finished");
+    } finally {
+      hasRun = false;
+    }
+  }
+
+  window.addEventListener("message", async (event: MessageEvent) => {
+    if (event.source !== window) return;
+    if ((event.data as { ns?: string }).ns !== EXTENSION_BRIDGE_NS) return;
+
+    const { type } = event.data as { type: string };
+
+    if (type === "TRIGGER_BLOCK_RUN") {
+      await main(false);
+      return;
+    }
+
+    if (type === "FORCE_BLOCK_RUN") {
+      hasRun = false;
+      await main(true);
+      return;
+    }
+
+    if (type === "CMD_REPORT_ARTIST") {
+      const { artistName, artistId, artistUrl, trackUrl } = await getNowPlaying();
+      if (!artistId) {
+        showToast("⚠️ No artist playing right now");
+        return;
+      }
+
+      const { blockedIds, lastRunAt, lastRunCount } = await loadStorage();
+      const blockedSet = new Set(blockedIds);
+      if (!blockedSet.has(artistId)) {
+        if (await blockBatchWithRetry([artistId])) {
+          blockedSet.add(artistId);
+          saveStorage([...blockedSet], lastRunAt, lastRunCount + 1);
+        }
+      }
+
+      const url = buildReportUrl({
+        artistName: artistName ?? "",
+        artistUrl: artistUrl ?? "",
+        exampleTrackUrl: trackUrl ?? "",
+      });
+      window.open(url, "_blank", "noopener");
+    }
+  });
+
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = async (...args: Parameters<typeof fetch>): Promise<Response> => {
+    const init = args[1] as RequestInit | undefined;
+    let rawAuth: string | null = null;
+
+    if (init?.headers instanceof Headers) {
+      rawAuth = init.headers.get("authorization");
+    } else if (init?.headers && typeof init.headers === "object") {
+      const headersRecord = init.headers as Record<string, string>;
+      rawAuth = headersRecord.authorization ?? headersRecord.Authorization ?? null;
+    }
+
+    if (rawAuth && rawAuth !== authHeader) {
+      authHeader = rawAuth;
+      if (!hasRun) {
+        void main(false).catch((e) => {
+          console.error("[AI Blocker]", e);
+        });
+      }
+    }
+
+    return originalFetch(...args);
+  };
+
+  console.log("[AI Blocker] page-script ready — waiting for Spotify auth token…");
+
+  setupArtistPageObserver();
+});
+</file>
+
+<file path="src/entrypoints/spotify.content.ts">
+import { browser } from "wxt/browser";
+import { defineContentScript } from "wxt/utils/define-content-script";
+import { injectScript } from "wxt/utils/inject-script";
+import {
+  EXTENSION_BRIDGE_NS,
+  type ExtensionBridgeMessage,
+  type FetchCsvResponse,
+  isPageCommand,
+  PAGE_BRIDGE_NS,
+  type PageBridgeMessage,
+  type RuntimeMessage,
+} from "../shared/messages";
+import { loadExtensionState, saveBlockedState } from "../shared/storage";
+
+export default defineContentScript({
+  matches: ["https://open.spotify.com/*"],
+  runAt: "document_start",
+  allFrames: false,
+  async main() {
+    registerPageBridge();
+    registerRuntimeBridge();
+    await injectScript("/page-script.js", { keepInDom: true });
+  },
+});
+
+function registerPageBridge(): void {
+  window.addEventListener("message", (event: MessageEvent) => {
+    if (event.source !== window) return;
+    const message = event.data as PageBridgeMessage;
+    if (message.ns !== PAGE_BRIDGE_NS) return;
+
+    if (message.type === "FETCH_CSV") {
+      void replyToFetchCsv(message);
+      return;
+    }
+
+    if (message.type === "GET_STORAGE") {
+      void replyToGetStorage(message);
+      return;
+    }
+
+    if (message.type === "BLOCKED_UPDATE") {
+      const payload = message.payload;
+      if (!payload) return;
+      void saveBlockedState({
+        blockedIds: payload.blockedIds,
+        lastRunAt: payload.lastRunAt,
+        lastRunCount: payload.lastRunCount,
+      });
+      return;
+    }
+
+    if (message.type === "PROGRESS_UPDATE") {
+      const payload = message.payload ?? {};
+      void browser.runtime
+        .sendMessage({
+          type: "PROGRESS_UPDATE",
+          current: payload.current ?? 0,
+          total: payload.total ?? 0,
+          status: payload.status ?? "finished",
+        } satisfies RuntimeMessage)
+        .catch(() => {
+          // The service worker can be waking up; progress will be refreshed from storage.
+        });
+    }
+  });
+}
+
+async function replyToFetchCsv(message: Extract<PageBridgeMessage, { type: "FETCH_CSV" }>) {
+  if (!message.reqId) return;
+
+  let payload: FetchCsvResponse;
+  try {
+    payload = (await browser.runtime.sendMessage({
+      type: "FETCH_CSV",
+      force: message.payload?.force === true,
+    } satisfies RuntimeMessage)) as FetchCsvResponse;
+  } catch (err) {
+    payload = { error: err instanceof Error ? err.message : "CSV fetch failed" };
+  }
+
+  postExtensionBridge({
+    ns: EXTENSION_BRIDGE_NS,
+    reqId: message.reqId,
+    type: "FETCH_CSV_REPLY",
+    payload,
+  });
+}
+
+async function replyToGetStorage(message: Extract<PageBridgeMessage, { type: "GET_STORAGE" }>) {
+  if (!message.reqId) return;
+
+  const payload = await loadExtensionState();
+  postExtensionBridge({
+    ns: EXTENSION_BRIDGE_NS,
+    reqId: message.reqId,
+    type: "GET_STORAGE_REPLY",
+    payload,
+  });
+}
+
+function registerRuntimeBridge(): void {
+  browser.runtime.onMessage.addListener((message) => {
+    const maybeType = (message as { type?: unknown }).type;
+    if (isPageCommand(maybeType)) {
+      postExtensionBridge({ ns: EXTENSION_BRIDGE_NS, type: maybeType });
+    }
+  });
+}
+
+function postExtensionBridge(message: ExtensionBridgeMessage): void {
+  window.postMessage(message, "*");
+}
+</file>
+
+<file path="src/shared/messages.test.ts">
+import { describe, expect, it } from "vitest";
+import { isPageCommand, isProgressStatus } from "./messages";
+
+describe("message guards", () => {
+  it("accepts page commands", () => {
+    expect(isPageCommand("TRIGGER_BLOCK_RUN")).toBe(true);
+    expect(isPageCommand("FORCE_BLOCK_RUN")).toBe(true);
+    expect(isPageCommand("CMD_REPORT_ARTIST")).toBe(true);
+  });
+
+  it("rejects non-page commands", () => {
+    expect(isPageCommand("FETCH_CSV")).toBe(false);
+    expect(isPageCommand("")).toBe(false);
+    expect(isPageCommand(null)).toBe(false);
+  });
+
+  it("accepts progress statuses", () => {
+    expect(isProgressStatus("started")).toBe(true);
+    expect(isProgressStatus("running")).toBe(true);
+    expect(isProgressStatus("finished")).toBe(true);
+  });
+
+  it("rejects unknown progress statuses", () => {
+    expect(isProgressStatus("failed")).toBe(false);
+    expect(isProgressStatus(undefined)).toBe(false);
+  });
+});
+</file>
+
+<file path="src/shared/messages.ts">
+export const PAGE_BRIDGE_NS = "SAB_PAGE";
+export const EXTENSION_BRIDGE_NS = "SAB_BG";
+
+export const PAGE_COMMANDS = ["TRIGGER_BLOCK_RUN", "FORCE_BLOCK_RUN", "CMD_REPORT_ARTIST"] as const;
+
+export type PageCommand = (typeof PAGE_COMMANDS)[number];
+export type ProgressStatus = "started" | "running" | "finished";
+
+export interface ProgressPayload {
+  current: number;
+  total: number;
+  status: ProgressStatus;
+}
+
+export interface FetchCsvRequest {
+  type: "FETCH_CSV";
+  force?: boolean;
+}
+
+export interface FetchCsvSuccess {
+  csv: string;
+  fromCache: boolean;
+}
+
+export interface FetchCsvFailure {
+  error: string;
+}
+
+export type FetchCsvResponse = FetchCsvSuccess | FetchCsvFailure;
+
+export interface GetNowPlayingRequest {
+  type: "GET_NOW_PLAYING";
+  tabId?: number;
+}
+
+export interface NowPlayingInfo {
+  artistName: string | null;
+  artistId: string | null;
+  artistUrl: string | null;
+  trackName: string | null;
+  trackUrl: string | null;
+  coverUrl?: string | null;
+  coverDataUrl?: string | null;
+}
+
+export type RuntimeMessage =
+  | FetchCsvRequest
+  | GetNowPlayingRequest
+  | ({ type: "PROGRESS_UPDATE" } & ProgressPayload)
+  | { type: PageCommand };
+
+export type PageBridgeMessage =
+  | {
+      ns: typeof PAGE_BRIDGE_NS;
+      reqId: string;
+      type: "FETCH_CSV";
+      payload?: { force?: boolean };
+    }
+  | {
+      ns: typeof PAGE_BRIDGE_NS;
+      reqId: string;
+      type: "GET_STORAGE";
+    }
+  | {
+      ns: typeof PAGE_BRIDGE_NS;
+      type: "BLOCKED_UPDATE";
+      payload: {
+        blockedIds: string[];
+        lastRunAt: string | null;
+        lastRunCount: number;
+      };
+    }
+  | {
+      ns: typeof PAGE_BRIDGE_NS;
+      type: "PROGRESS_UPDATE";
+      payload: Partial<ProgressPayload>;
+    };
+
+export type ExtensionBridgeMessage =
+  | {
+      ns: typeof EXTENSION_BRIDGE_NS;
+      reqId: string;
+      type: "FETCH_CSV_REPLY";
+      payload: FetchCsvResponse;
+    }
+  | {
+      ns: typeof EXTENSION_BRIDGE_NS;
+      reqId: string;
+      type: "GET_STORAGE_REPLY";
+      payload: StoredRunState;
+    }
+  | {
+      ns: typeof EXTENSION_BRIDGE_NS;
+      type: PageCommand;
+    };
+
+export interface StoredRunState {
+  blockedIds?: string[];
+  lastRunAt?: string | null;
+  lastRunCount?: number;
+}
+
+export function isPageCommand(type: unknown): type is PageCommand {
+  return typeof type === "string" && PAGE_COMMANDS.includes(type as PageCommand);
+}
+
+export function isProgressStatus(status: unknown): status is ProgressStatus {
+  return status === "started" || status === "running" || status === "finished";
+}
+</file>
+
+<file path="src/shared/storage.test.ts">
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { fakeBrowser } from "wxt/testing";
+
+let storageModule: typeof import("./storage");
+
+beforeAll(async () => {
+  vi.stubGlobal("chrome", fakeBrowser);
+  storageModule = await import("./storage");
+});
+
+describe("WXT storage adapter", () => {
+  beforeEach(() => {
+    fakeBrowser.reset();
+  });
+
+  it("keeps legacy local storage keys behind WXT storage items", () => {
+    expect(storageModule.blockedIdsItem.key).toBe("local:blockedIds");
+    expect(storageModule.lastRunAtItem.key).toBe("local:lastRunAt");
+    expect(storageModule.lastRunCountItem.key).toBe("local:lastRunCount");
+    expect(storageModule.csvCacheItem.key).toBe("local:csvCache");
+    expect(storageModule.blockProgressItem.key).toBe("local:blockProgress");
+  });
+
+  it("loads stable default state when storage is empty", async () => {
+    await expect(storageModule.loadExtensionState()).resolves.toEqual({
+      blockedIds: [],
+      lastRunAt: null,
+      lastRunCount: 0,
+      csvCache: {},
+    });
+    await expect(storageModule.loadCsvCache()).resolves.toEqual({});
+    await expect(storageModule.loadBlockProgress()).resolves.toBeNull();
+  });
+
+  it("saves blocked state through WXT storage", async () => {
+    await storageModule.saveBlockedState({
+      blockedIds: ["artist-1", "artist-2"],
+      lastRunAt: "2026-05-15",
+      lastRunCount: 2,
+    });
+
+    await expect(fakeBrowser.storage.local.get()).resolves.toMatchObject({
+      blockedIds: ["artist-1", "artist-2"],
+      lastRunAt: "2026-05-15",
+      lastRunCount: 2,
+    });
+  });
+
+  it("saves CSV cache and block progress through WXT storage", async () => {
+    await storageModule.saveCsvCache({ data: "name,id\nA,1", fetchedAt: 123 });
+    await storageModule.saveBlockProgress({ current: 1, total: 2, status: "running" });
+
+    await expect(storageModule.loadCsvCache()).resolves.toEqual({
+      data: "name,id\nA,1",
+      fetchedAt: 123,
+    });
+    await expect(storageModule.loadBlockProgress()).resolves.toMatchObject({
+      current: 1,
+      total: 2,
+      status: "running",
+    });
+  });
+});
+</file>
+
+<file path="src/shared/storage.ts">
+import { storage } from "wxt/utils/storage";
+import type { ProgressPayload } from "./messages";
+
+export interface CsvCache {
+  data?: string;
+  fetchedAt?: number;
+}
+
+export interface ExtensionState {
+  blockedIds?: string[];
+  lastRunAt?: string | null;
+  lastRunCount?: number;
+  csvCache?: CsvCache;
+  blockProgress?: ProgressPayload & { updatedAt: number };
+}
+
+export const blockedIdsItem = storage.defineItem<string[]>("local:blockedIds", { fallback: [] });
+export const lastRunAtItem = storage.defineItem<string | null>("local:lastRunAt", {
+  fallback: null,
+});
+export const lastRunCountItem = storage.defineItem<number>("local:lastRunCount", { fallback: 0 });
+export const csvCacheItem = storage.defineItem<CsvCache>("local:csvCache", { fallback: {} });
+export const blockProgressItem = storage.defineItem<
+  (ProgressPayload & { updatedAt: number }) | null
+>("local:blockProgress", { fallback: null });
+
+export async function loadExtensionState(): Promise<ExtensionState> {
+  const [blockedIds, lastRunAt, lastRunCount, csvCache] = await Promise.all([
+    blockedIdsItem.getValue(),
+    lastRunAtItem.getValue(),
+    lastRunCountItem.getValue(),
+    csvCacheItem.getValue(),
+  ]);
+
+  return { blockedIds, lastRunAt, lastRunCount, csvCache };
+}
+
+export async function loadCsvCache(): Promise<CsvCache | undefined> {
+  return await csvCacheItem.getValue();
+}
+
+export async function saveCsvCache(cache: CsvCache): Promise<void> {
+  await csvCacheItem.setValue(cache);
+}
+
+export async function saveBlockedState(state: {
+  blockedIds: string[];
+  lastRunAt: string | null;
+  lastRunCount: number;
+}): Promise<void> {
+  await storage.setItems([
+    { item: blockedIdsItem, value: state.blockedIds },
+    { item: lastRunAtItem, value: state.lastRunAt },
+    { item: lastRunCountItem, value: state.lastRunCount },
+  ]);
+}
+
+export async function loadBlockProgress(): Promise<ExtensionState["blockProgress"] | null> {
+  return await blockProgressItem.getValue();
+}
+
+export async function saveBlockProgress(progress: ProgressPayload): Promise<void> {
+  await blockProgressItem.setValue({
+    ...progress,
+    updatedAt: Date.now(),
+  });
+}
+</file>
+
+<file path="src/utils/csv.test.ts">
+import { describe, expect, it } from "vitest";
+import { parseCsv } from "./csv";
+
+describe("parseCsv", () => {
+  it("parses valid CSV rows and skips header", () => {
+    const input = "name,id\nArtist One,spotify:artist:123\nArtist Two, 456 \n";
+    const result = parseCsv(input);
+    expect(result).toEqual([
+      { name: "Artist One", id: "spotify:artist:123" },
+      { name: "Artist Two", id: "456" },
+    ]);
+  });
+
+  it("ignores empty or malformed rows", () => {
+    const input = "name,id\n,\nOnlyName,\n,OnlyId\nA,B\n";
+    const result = parseCsv(input);
+    expect(result).toEqual([{ name: "A", id: "B" }]);
+  });
+
+  it("returns empty array for empty or header-only CSV", () => {
+    expect(parseCsv("")).toEqual([]);
+    expect(parseCsv("name,id\n")).toEqual([]);
+  });
+
+  it("trims whitespace around values", () => {
+    const input = "name,id\n  Artist  ,  123  \n";
+    const result = parseCsv(input);
+    expect(result).toEqual([{ name: "Artist", id: "123" }]);
+  });
+});
+</file>
+
+<file path="src/utils/csv.ts">
+/**
+ * Parse the AI-artist CSV file into a structured representation.
+ *
+ * @param raw - Raw CSV text as downloaded from GitHub.
+ * @returns Array of artist rows with `name` and `id`.
+ */
+export interface CsvArtistRow {
+  name: string;
+  id: string;
+}
+
+export function parseCsv(raw: string): CsvArtistRow[] {
+  return raw
+    .split("\n")
+    .slice(1)
+    .map((line) => line.split(",").map((s) => s.trim()))
+    .filter(([name, id]) => Boolean(name) && Boolean(id))
+    .map(([name, id]) => ({ name: name as string, id: id as string }));
+}
+</file>
+
+<file path="src/utils/html.test.ts">
+import { describe, expect, it } from "vitest";
+import { escHtml } from "./html";
+
+describe("escHtml", () => {
+  it("returns empty string for nullish values", () => {
+    expect(escHtml(null)).toBe("");
+    expect(escHtml(undefined)).toBe("");
+  });
+
+  it("escapes special HTML characters", () => {
+    expect(escHtml(`<&>"'`)).toBe("&lt;&amp;&gt;&quot;&#39;");
+  });
+
+  it("leaves safe text unchanged", () => {
+    expect(escHtml("Hello world")).toBe("Hello world");
+  });
+
+  it("handles mixed safe and unsafe characters", () => {
+    expect(escHtml("Hello <b>world</b> & friends")).toBe(
+      "Hello &lt;b&gt;world&lt;/b&gt; &amp; friends",
+    );
+  });
+});
+</file>
+
+<file path="src/utils/html.ts">
+/**
+ * Escape a string for safe insertion into HTML.
+ *
+ * @param value - Raw string value to escape.
+ * @returns Escaped HTML-safe string.
+ */
+export function escHtml(value: string | null | undefined): string {
+  if (!value) return "";
+  return value.replace(/[&<>"']/g, (c) => {
+    const map: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return map[c] ?? c;
+  });
+}
+</file>
+
+<file path="src/utils/spotify.test.ts">
+import { describe, expect, it } from "vitest";
+import { buildReportUrl, buildTrackUrl, extractArtistId, extractUsername } from "./spotify";
+
+describe("extractArtistId", () => {
+  it("extracts id from a standard artist pathname", () => {
+    expect(extractArtistId("/artist/2HYEkQARMRVBcPPzKeoRaz")).toBe("2HYEkQARMRVBcPPzKeoRaz");
+  });
+
+  it("extracts id when pathname has trailing query string", () => {
+    expect(extractArtistId("/artist/2HYEkQARMRVBcPPzKeoRaz?foo=bar")).toBe(
+      "2HYEkQARMRVBcPPzKeoRaz",
+    );
+  });
+
+  it("returns null for non-artist pathnames", () => {
+    expect(extractArtistId("/track/18qp1CmyLZnTj6ca4D8qJ2")).toBeNull();
+    expect(extractArtistId("/")).toBeNull();
+    expect(extractArtistId("")).toBeNull();
+  });
+
+  it("returns null when artist segment is empty", () => {
+    expect(extractArtistId("/artist/")).toBeNull();
+  });
+});
+
+describe("buildReportUrl", () => {
+  it("builds a correctly structured GitHub issue URL", () => {
+    const url = buildReportUrl({
+      artistName: "Chillo Vino",
+      artistUrl: "https://open.spotify.com/artist/2HYEkQARMRVBcPPzKeoRaz",
+      exampleTrackUrl: "https://open.spotify.com/track/18qp1CmyLZnTj6ca4D8qJ2",
+    });
+
+    expect(url).toContain("https://github.com/CennoxX/spotify-ai-blocker/issues/new");
+    expect(url).toContain("template=ai-artist.yml");
+    expect(url).toContain(encodeURIComponent("[AI-Artist] Chillo Vino"));
+    expect(url).toContain(`artist_name=${encodeURIComponent("Chillo Vino")}`);
+    expect(url).toContain(
+      `artist_url=${encodeURIComponent("https://open.spotify.com/artist/2HYEkQARMRVBcPPzKeoRaz")}`,
+    );
+    expect(url).toContain(
+      `example_track_url=${encodeURIComponent("https://open.spotify.com/track/18qp1CmyLZnTj6ca4D8qJ2")}`,
+    );
+  });
+
+  it("defaults example_track_url to empty string when omitted", () => {
+    const url = buildReportUrl({
+      artistName: "Test Artist",
+      artistUrl: "https://open.spotify.com/artist/abc123",
+    });
+
+    expect(url).toContain("example_track_url=");
+    // Ends with empty encoded value
+    expect(url.endsWith("example_track_url=")).toBe(true);
+  });
+
+  it("encodes special characters in artist name", () => {
+    const url = buildReportUrl({
+      artistName: "AC/DC & More",
+      artistUrl: "https://open.spotify.com/artist/xyz",
+    });
+
+    expect(url).toContain(encodeURIComponent("AC/DC & More"));
+    expect(url).not.toContain("AC/DC & More");
+  });
+});
+
+describe("extractUsername", () => {
+  it("returns the username from a colon-separated localStorage key", () => {
+    expect(extractUsername(["johndoe:token123", "other-key"])).toBe("johndoe");
+  });
+
+  it("ignores anonymous: keys", () => {
+    expect(extractUsername(["anonymous:abc", "johndoe:token"])).toBe("johndoe");
+  });
+
+  it("returns null when no valid key exists", () => {
+    expect(extractUsername([])).toBeNull();
+    expect(extractUsername(["anonymous:abc"])).toBeNull();
+    expect(extractUsername(["no-colon-key"])).toBeNull();
+  });
+
+  it("returns the first matching username when multiple exist", () => {
+    expect(extractUsername(["userA:tok1", "userB:tok2"])).toBe("userA");
+  });
+});
+
+describe("buildTrackUrl", () => {
+  it("builds a full Spotify track URL from an id", () => {
+    expect(buildTrackUrl("18qp1CmyLZnTj6ca4D8qJ2")).toBe(
+      "https://open.spotify.com/track/18qp1CmyLZnTj6ca4D8qJ2",
+    );
+  });
+});
+</file>
+
+<file path="src/utils/spotify.ts">
+/**
+ * Pure utility functions for Spotify URL/ID parsing and GitHub issue URL building.
+ */
+
+/**
+ * Extract the Spotify artist ID from a pathname like `/artist/2HYEkQARMRVBcPPzKeoRaz`.
+ */
+export function extractArtistId(pathname: string): string | null {
+  return pathname.match(/\/artist\/([^/?]+)/)?.[1] ?? null;
+}
+
+/**
+ * Build a GitHub issue URL pre-filled with AI-artist report data.
+ */
+export function buildReportUrl(params: {
+  artistName: string;
+  artistUrl: string;
+  exampleTrackUrl?: string;
+}): string {
+  const { artistName, artistUrl, exampleTrackUrl = "" } = params;
+  return (
+    "https://github.com/CennoxX/spotify-ai-blocker/issues/new" +
+    "?template=ai-artist.yml" +
+    `&title=${encodeURIComponent(`[AI-Artist] ${artistName}`)}` +
+    `&artist_name=${encodeURIComponent(artistName)}` +
+    `&artist_url=${encodeURIComponent(artistUrl)}` +
+    `&example_track_url=${encodeURIComponent(exampleTrackUrl)}`
+  );
+}
+
+/**
+ * Extract a username from a Spotify localStorage key like `username:token`.
+ * Returns null if no matching key is found.
+ */
+export function extractUsername(keys: string[]): string | null {
+  const key = keys.find((k) => k.includes(":") && !k.startsWith("anonymous:"));
+  return key?.split(":")[0] ?? null;
+}
+
+/**
+ * Build a full Spotify track URL from a track ID.
+ */
+export function buildTrackUrl(trackId: string): string {
+  return `https://open.spotify.com/track/${trackId}`;
+}
+</file>
+
+<file path=".commitlintrc.cjs">
+module.exports = {
+  extends: ["@commitlint/config-conventional"],
+};
+</file>
+
+<file path="LICENSE">
+MIT License
+
+Copyright (c) 2025
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</file>
+
+<file path="wxt.config.ts">
+import { defineConfig } from "wxt";
+
+const spotifyMatches = ["https://open.spotify.com/*"];
+
+export default defineConfig({
+  srcDir: "src",
+  browser: "chrome",
+  targetBrowsers: ["chrome", "edge"],
+  manifestVersion: 3,
+  manifest: {
+    name: "Spotify AI Blocker",
+    description:
+      "Chromium extension that automatically blocks AI-generated artists on Spotify using a community-maintained list.",
+    permissions: ["storage", "contextMenus", "scripting", "tabs", "alarms"],
+    host_permissions: [
+      "https://open.spotify.com/*",
+      "https://spclient.wg.spotify.com/*",
+      "https://raw.githubusercontent.com/*",
+    ],
+    action: {
+      default_title: "Spotify AI Artist Blocker",
+      default_icon: {
+        16: "/icon-16.png",
+        48: "/icon-48.png",
+        128: "/icon-128.png",
+      },
+    },
+    icons: {
+      16: "/icon-16.png",
+      48: "/icon-48.png",
+      128: "/icon-128.png",
+    },
+    web_accessible_resources: [
+      {
+        resources: ["page-script.js"],
+        matches: spotifyMatches,
+      },
+    ],
+  },
+  zip: {
+    artifactTemplate: "{{name}}-{{version}}-{{browser}}.zip",
+    zipSources: false,
+  },
+});
+</file>
+
+<file path=".github/workflows/ci.yml">
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    name: verify WXT build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify
+        run: pnpm verify
+</file>
+
+<file path=".gitignore">
+.DS_Store
+Thumbs.db
+*.crx
+*.pem
+*.zip
+node_modules/
+dist/
+.output/
+.wxt/
+.pnpm-store/
+.sisyphus/
+</file>
+
+<file path="CHANGELOG.md">
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Changed
+
+- Migrated the extension build fully to WXT with file-based entrypoints, generated MV3 manifest, WXT zip output, and Chrome/Edge scripts.
+- Refactored runtime messaging and storage access around shared TypeScript types and WXT storage while preserving existing extension local storage keys.
+- Split and polished the popup UI with separate CSS, testable view helpers, better empty/error states, and inline manual-run confirmation.
+- Replaced custom release shell scripting with WXT build, zip, submit, manifest, and purity-check package scripts.
+
+### Fixed
+
+- Registered the Spotify right-click report context menu from the background service worker.
+
+## [0.4.2] - 2026-05-05
+
+### Added
+
+- Added "Report AI Artist" floating button on artist pages - appears as a green pill with robot icon in the bottom-right corner when viewing any artist profile
+
+### Fixed
+
+- **Critical**: Fixed race condition in now-playing detection that caused popup to incorrectly show "Nothing playing right now" when opened immediately after clicking play. Both `readNowPlayingFromDOM()` (background) and `getNowPlaying()` (page-script) now use retry polling with fallback selectors:
+  - Polls every 200ms for up to 25 attempts (5 second max timeout)
+  - Falls back through multiple selector arrays for artist (3), track (2), and cover (3) elements
+  - Uses `.map().find()` pattern to select first matching element from fallback chain
+- **Critical**: Fixed UI freeze bug in `getNowPlaying()` - the busy-wait loop blocked the main thread for up to 5 seconds, freezing Spotify's UI during context menu usage. Converted to async Promise-based retry with `setTimeout` polling (same pattern as background.ts)
+- Fixed artist name selector on artist pages - `[data-testid="entityTitle"]` alone was matching sidebar elements instead of artist names. Reordered selectors from most-specific to most-general: `artist-page-hero-title` → `artist-page-hero entityTitle` → `top-result-card entityTitle` → `h1` → `.artist-names`
+
+## [0.4.1] - Previous
+
+### Added
+
+- Progress bar in popup showing real-time blocking progress during runs
+- Hourglass badge (⏳) on extension icon during active blocking runs with orange background
+- Last-run timestamp display in popup
+
+### Changed
+
+- Improved error handling for CSV fetch failures
+- Enhanced popup UI layout and responsiveness
+
+## [0.4.0] - Previous
+
+### Added
+
+- Automatic blocking of AI artists from community-maintained list
+- Context menu "Report AI Artist" for quick reporting
+- Popup with current track info and GitHub issue creation
+- Daily alarm for automatic blocking runs
+- Toast notifications for blocking completion
+
+[Unreleased]: https://github.com/trevonerd/spotify-ai-blocker-chrome-extension/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/trevonerd/spotify-ai-blocker-chrome-extension/compare/v0.4.1...v0.4.2
+[0.4.1]: https://github.com/trevonerd/spotify-ai-blocker-chrome-extension/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/trevonerd/spotify-ai-blocker-chrome-extension/releases/tag/v0.4.0
+</file>
+
+<file path="tsconfig.json">
+{
+  // Visit https://aka.ms/tsconfig to read more about this file
+  "compilerOptions": {
+    // File Layout
+    // "rootDir": "./src",
+    // "outDir": "./dist",
+
+    // Environment Settings
+    // See also https://aka.ms/tsconfig/module
+    "module": "esnext",
+    "target": "esnext",
+    "types": ["node", "wxt/vite-builder-env"],
+    "lib": ["dom", "dom.iterable", "esnext"],
+    // For nodejs:
+    // "lib": ["esnext"],
+    // "types": ["node"],
+    // and npm install -D @types/node
+
+    // Other Outputs
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+
+    // Stricter Typechecking Options
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+
+    // Style Options
+    // "noImplicitReturns": true,
+    // "noImplicitOverride": true,
+    // "noUnusedLocals": true,
+    // "noUnusedParameters": true,
+    // "noFallthroughCasesInSwitch": true,
+    // "noPropertyAccessFromIndexSignature": true,
+
+    // Recommended Options
+    "strict": true,
+    "jsx": "react-jsx",
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "noUncheckedSideEffectImports": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true,
+
+    "moduleResolution": "bundler",
+    "allowJs": false,
+    "resolveJsonModule": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "wxt.config.ts", ".wxt/**/*.d.ts"]
+}
+</file>
+
+<file path="biome.json">
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "files": {
+    "ignoreUnknown": false,
+    "maxSize": 1048576,
+    "includes": ["src/**/*", "scripts/**/*", ".github/**/*", "wxt.config.ts"]
+  }
+}
+</file>
+
+<file path="README.md">
+# Spotify AI Blocker — Chrome/Edge Extension
+
+[![CI](https://github.com/trevonerd/spotify-ai-blocker-chrome-extension/actions/workflows/ci.yml/badge.svg)](https://github.com/trevonerd/spotify-ai-blocker-chrome-extension/actions/workflows/ci.yml)
+
+If you've been using Spotify for a while you've probably noticed something annoying: playlists and radio stations full of artists with names like "Relaxing Piano Mood Vol. 3" or "Deep Focus Study Beats" that don't really exist. They're AI-generated, uploaded in bulk, and Spotify keeps pushing them because they cost zero in royalties. The result is that you end up listening to fake music without even knowing it.
+
+There's already a great Tampermonkey script by [CennoxX](https://github.com/CennoxX/spotify-ai-blocker) that solves this using a crowdsourced list of AI artists. The problem is that Tampermonkey is a power-user thing — you need to install an extension, paste a script, figure out how it works... most people give up before finishing.
+
+This project brings the exact same functionality as a **native Chromium extension** built with WXT: install it, open Spotify, done. Nothing else.
+
+> ⚠️ **Store release note** — The WXT Chrome/Edge builds are production-packaged, but store publication still requires the usual Chrome Web Store / Edge Add-ons listing review.
+
+> ⚠️ **Disclaimer** — Spotify does not provide an official API for blocking artists. This userscript mimics requests made by Spotify's web player and may violate Spotify's Terms of Service. Use at your own risk.
+
+---
+
+## How it works in 30 seconds
+
+- Automatically blocks all AI artists from the [official crowdsourced list](https://github.com/CennoxX/spotify-ai-blocker) every 24 hours
+- Blocks happen on your Spotify account — so they sync across **all your devices** (mobile app, desktop, smart TV, everything)
+- If you find an AI artist that's not on the list yet, you can report them directly from the extension popup
+- Only works on the **Spotify Web Player** (`open.spotify.com`) — but the blocks apply everywhere
+
+---
+
+## Installation
+
+### Step 1 — Download the extension
+
+Click the green **Code** button at the top right of this page, then **Download ZIP**. Extract the folder wherever you want (e.g. your Desktop).
+
+Or if you use git:
+```bash
+git clone https://github.com/trevonerd/spotify-ai-blocker-chrome-extension.git
+```
+
+### Step 2 — Build and open the extensions page
+
+From the project folder:
+
+```bash
+pnpm install
+pnpm build
+```
+
+Then open your browser's extensions page.
+
+Chrome:
+```
+chrome://extensions
+```
+
+Edge:
+```
+edge://extensions
+```
+
+### Step 3 — Enable Developer Mode
+
+In the top right corner you'll see a toggle called **"Developer mode"**. Turn it on. Three new buttons will appear.
+
+### Step 4 — Load the extension
+
+Click **"Load unpacked"**. A file picker opens: navigate to `.output/chrome-mv3` for Chrome or `.output/edge-mv3` for Edge and select that folder.
+
+The extension icon will appear in Chrome's toolbar. If you don't see it, click the puzzle icon 🧩 and pin it.
+
+### Step 5 — Open Spotify
+
+Go to [open.spotify.com](https://open.spotify.com) and log in. The extension starts automatically. After a few seconds you'll see a green toast notification showing how many artists were blocked.
+
+**That's it.** From now on it runs automatically every 24 hours and every time you reload Spotify.
+
+---
+
+## How to use it
+
+**The popup** (click the extension icon in Chrome or Edge):
+- See how many artists you've blocked and how many are in the total list
+- See when the last automatic block run happened
+- When a blocking run is active, a Spotify-green progress bar shows real-time progress (e.g. "Blocking 142/850...")
+- Force a manual run with **"Run now"** — clicking it shows a confirmation prompt to prevent accidental API spam
+- If a song is playing, you can see the current track and report the artist as AI with one click
+- While a blocking run is active, the extension icon displays a running badge with an orange background, which clears automatically when the run completes
+
+**Reporting an AI artist:**
+1. Play a song by the suspicious artist
+2. Open the extension popup
+3. Click **"Report as AI Artist on GitHub"**
+4. A pre-filled GitHub issue opens — add any extra details and submit
+5. The artist gets blocked on your account immediately, even before the report gets accepted into the list
+
+**Right-click menu:**
+You can also right-click anywhere on the Spotify page and find the report option in the context menu.
+
+---
+
+## FAQ
+
+**Do blocks work on mobile too?**
+Yes. Blocking an artist is an account-level feature, not device-specific. Whatever you block on the web player applies everywhere.
+
+**How often does the list update?**
+The list is downloaded from GitHub once a day and cached locally. New artists get blocked automatically every 24 hours, every time you reload Spotify, or manually via the popup.
+
+**Can I unblock an artist?**
+Yes, directly from Spotify: go to the artist's profile, click the three dots and choose "Unblock". The extension won't re-block them (it keeps a local cache of what it has already blocked).
+
+**Can Spotify ban me for this?**
+It uses the same internal endpoint Spotify uses when you manually block an artist. The risk is extremely low. That said, no guarantees. See the disclaimer at the top of this README for more details.
+
+---
+
+## For developers
+
+### Project structure
+
+```
+spotify-ai-blocker-chrome-extension/
+├── wxt.config.ts              # WXT config and generated-manifest source
+├── public/                    # Static extension icons copied by WXT
+├── src/
+│   ├── entrypoints/
+│   │   ├── background.ts      # Service worker: alarms, CSV cache, context menu, cover art
+│   │   ├── spotify.content.ts # Content script bridge between page context and runtime
+│   │   ├── page-script.ts     # Main-world script: fetch interceptor, block API, toasts
+│   │   └── popup/             # Popup HTML, CSS, UI state and render helpers
+│   ├── shared/                # Typed messages and storage adapter
+│   └── utils/                 # Pure utilities and unit tests
+├── .output/                   # WXT build output (`chrome-mv3`, `edge-mv3`)
+├── tsconfig.json              # TypeScript compiler options
+├── biome.json                 # Biome (lint + format) configuration
+├── .husky/                    # Husky Git hooks (pre-commit, commit-msg)
+├── .commitlintrc.cjs          # Conventional commit rules
+└── package.json               # Scripts and dev tooling configuration
+```
+
+### Runtime architecture (content script vs page script)
+
+MV3 content scripts run in an isolated JS world — they can't access `window.fetch` or any of the page's variables. To capture Spotify's Bearer token (which travels in the headers of its fetch calls) we need to execute code in the real page context.
+
+Solution: `spotify.content.ts` is a WXT content script that injects `page-script.ts` as an unlisted main-world script. The two communicate via `window.postMessage` with a namespaced protocol (`SAB_PAGE` / `SAB_BG`) and unique request IDs to avoid race conditions.
+
+### Message flow
+
+```
+popup/main.ts
+  └─ browser.tabs.sendMessage(FORCE_BLOCK_RUN)
+       └─ spotify.content.ts (browser.runtime.onMessage)
+            └─ window.postMessage(SAB_BG, FORCE_BLOCK_RUN)
+                 └─ page-script.ts (window message listener)
+                      └─ main(forced=true)
+                           ├─ bridgeRequest(FETCH_CSV) → content bridge → background → GitHub
+                           └─ fetch(spclient.wg.spotify.com/collection/v2/write)
+
+Progress reporting:
+page-script.ts main()
+  └─ bridgeNotify(PROGRESS_UPDATE, {current, total, status})
+       └─ spotify.content.ts forwards to extension runtime
+            └─ background.ts
+                 ├─ Sets badge text while running, cleared when done
+                 ├─ Persists progress through WXT local storage
+                 └─ Forwards to popup/main.ts (if open)
+                      └─ Updates progress bar in real-time
+```
+
+### Tooling and scripts
+
+The project is built with a modern TypeScript toolchain:
+
+- **Package manager**: `pnpm`
+- **Extension framework**: `WXT` (file-based entrypoints, generated MV3 manifest, dev server, zip)
+- **Bundler**: `Vite` through WXT
+- **Language**: `TypeScript` (all new code, comments and TSDoc in English)
+- **Lint/format**: `Biome` (`biome.json`)
+- **Git hooks**: `Husky` + `Commitlint` (conventional commits)
+- **Tests**: `Vitest` (`vitest` + `@vitest/coverage-v8`)
+
+Available scripts in `package.json`:
+
+```bash
+# Start WXT dev mode for Chrome or Edge
+pnpm dev
+pnpm dev:edge
+
+# Production builds
+pnpm build
+pnpm build:edge
+pnpm build:all
+
+# Create store-ready zips in .output/
+pnpm zip
+pnpm zip:edge
+pnpm zip:all
+
+# Quality gates
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm test:manifest
+pnpm test:wxt
+pnpm verify
+
+# Format files via Biome
+pnpm format
+
+# Clean generated WXT files and caches
+pnpm clean
+
+# Store submission helpers
+pnpm submit:init
+pnpm submit:dry-run
+pnpm submit
+```
+
+### Testing
+
+Unit tests are written with **Vitest** and focus on pure utilities plus WXT integration boundaries:
+
+- `src/utils/csv.test.ts` – tests the CSV parser used by the page script.
+- `src/utils/html.test.ts` – tests the HTML escaping helper used in the popup UI.
+- `src/shared/messages.test.ts` – tests runtime/page message guards.
+- `src/shared/storage.test.ts` – tests the WXT storage adapter and preserved local keys.
+- `src/entrypoints/popup/view-model.test.ts` – tests popup count, last-run and progress view helpers.
+
+To run the test suite locally:
+
+```bash
+pnpm install
+pnpm verify
+```
+
+Git hooks (via Husky) can be extended to include `pnpm test` in the `pre-commit` step to ensure tests stay green before every commit.
+
+### Reloading during development
+
+During development, run `pnpm dev` and use the browser instance WXT opens. For production-style local testing, run `pnpm build:all`, load `.output/chrome-mv3` or `.output/edge-mv3`, then reload the extension and Spotify after edits.
+
+For `page-script.js` logs: open Spotify DevTools (F12) → Console, filter by `[AI Blocker]`.
+For service worker logs: `chrome://extensions` → "Service worker" → Inspect.
+
+### Permissions used
+
+| Permission | Reason |
+|---|---|
+| `storage` | Store blocked artist IDs and last-run timestamp |
+| `scripting` | Read Spotify's DOM to get now-playing info (popup) |
+| `tabs` | Find the open Spotify tab |
+| `alarms` | Automatic 24h run |
+| `contextMenus` | Right-click menu on Spotify |
+| `host: open.spotify.com` | Inject the content script |
+| `host: spclient.wg.spotify.com` | Call Spotify's block API |
+| `host: raw.githubusercontent.com` | Download the AI artist list |
+
+---
+
+## Credits
+
+- AI artist list and original script: [CennoxX/spotify-ai-blocker](https://github.com/CennoxX/spotify-ai-blocker) — MIT License
+- This extension ports the original script's logic and adds UX improvements: real-time progress bar, badge icon while running, and confirmation dialog on manual runs
+
+---
+
+## License
+
+MIT
+</file>
+
+<file path="package.json">
+{
+  "name": "spotify-ai-blocker-chrome-extension",
+  "version": "0.4.2",
+  "description": "Chromium extension that automatically blocks AI-generated artists on Spotify using a community-maintained list.",
+  "private": true,
+  "packageManager": "pnpm@10.33.4",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt -b chrome",
+    "dev:chrome": "wxt -b chrome",
+    "dev:edge": "wxt -b edge",
+    "build": "pnpm build:chrome",
+    "build:chrome": "wxt build -b chrome",
+    "build:edge": "wxt build -b edge",
+    "build:all": "pnpm build:chrome && pnpm build:edge",
+    "zip": "pnpm zip:chrome",
+    "zip:chrome": "wxt zip -b chrome",
+    "zip:edge": "wxt zip -b edge",
+    "zip:all": "pnpm zip:chrome && pnpm zip:edge",
+    "clean": "wxt clean",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "tsc --noEmit",
+    "test:ts": "pnpm typecheck",
+    "test:manifest": "node scripts/check-generated-manifest.mjs",
+    "test:wxt": "node scripts/check-wxt-purity.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build:all && pnpm test:manifest && pnpm test:wxt",
+    "release:check": "pnpm clean && pnpm verify",
+    "release:zip": "pnpm release:check && pnpm zip:all",
+    "submit:init": "wxt submit init",
+    "submit:dry-run": "wxt submit --dry-run --chrome-zip .output/*-chrome.zip --edge-zip .output/*-edge.zip",
+    "submit": "wxt submit --chrome-zip .output/*-chrome.zip --edge-zip .output/*-edge.zip",
+    "repomix:update": "pnpm dlx repomix@latest",
+    "postinstall": "wxt prepare",
+    "prepare": "husky install"
+  },
+  "keywords": [
+    "chrome-extension",
+    "spotify",
+    "ai-blocker",
+    "wxt",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@commitlint/cli": "^20.5.3",
+    "@commitlint/config-conventional": "^20.5.3",
+    "@types/node": "^25.6.0",
+    "@vitest/coverage-v8": "^4.1.5",
+    "husky": "^9.1.7",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5",
+    "wxt": "^0.20.26"
+  }
+}
+</file>
+
+</files>

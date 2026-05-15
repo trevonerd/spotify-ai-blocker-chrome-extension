@@ -1,0 +1,15 @@
+{
+  "output": {
+    "style": "xml",
+    "filePath": "repomix-output.xml"
+  },
+  "ignore": {
+    "customPatterns": [
+      ".sisyphus/**",
+      ".output/**",
+      ".wxt/**",
+      "node_modules/**",
+      "dist/**"
+    ]
+  }
+}
