@@ -1,5 +1,7 @@
-import { parseCsv } from "./utils/csv";
-import { buildReportUrl, buildTrackUrl, extractArtistId, extractUsername } from "./utils/spotify";
+import { defineUnlistedScript } from "wxt/utils/define-unlisted-script";
+import { EXTENSION_BRIDGE_NS, PAGE_BRIDGE_NS } from "../shared/messages";
+import { parseCsv } from "../utils/csv";
+import { buildReportUrl, buildTrackUrl, extractArtistId, extractUsername } from "../utils/spotify";
 
 /**
  * Page script entrypoint.
@@ -10,9 +12,7 @@ import { buildReportUrl, buildTrackUrl, extractArtistId, extractUsername } from 
  * the AI-artist blocking flow via Spotify's internal APIs.
  */
 
-((): void => {
-  const NS_PAGE = "SAB_PAGE";
-  const NS_BG = "SAB_BG";
+export default defineUnlistedScript((): void => {
   const BLOCK_ENDPOINT = "https://spclient.wg.spotify.com/collection/v2/write?market=from_token";
   const BATCH_SIZE = 50;
   const BATCH_DELAY = (): number => 600 + Math.random() * 300;
@@ -45,7 +45,7 @@ import { buildReportUrl, buildTrackUrl, extractArtistId, extractUsername } from 
 
       function handler(event: MessageEvent): void {
         if (event.source !== window) return;
-        if ((event.data as { ns?: string }).ns !== NS_BG) return;
+        if ((event.data as { ns?: string }).ns !== EXTENSION_BRIDGE_NS) return;
         if ((event.data as { reqId?: string }).reqId !== reqId) return;
         if ((event.data as { type?: string }).type !== replyType) return;
         clearTimeout(timer);
@@ -54,12 +54,12 @@ import { buildReportUrl, buildTrackUrl, extractArtistId, extractUsername } from 
       }
 
       window.addEventListener("message", handler);
-      window.postMessage({ ns: NS_PAGE, reqId, type, payload }, "*");
+      window.postMessage({ ns: PAGE_BRIDGE_NS, reqId, type, payload }, "*");
     });
   }
 
   const bridgeNotify = <TPayload>(type: string, payload: TPayload | null = null): void => {
-    window.postMessage({ ns: NS_PAGE, type, payload }, "*");
+    window.postMessage({ ns: PAGE_BRIDGE_NS, type, payload }, "*");
   };
 
   const sendProgress = (current: number, total: number, status: string): void => {
@@ -434,7 +434,7 @@ import { buildReportUrl, buildTrackUrl, extractArtistId, extractUsername } from 
 
   window.addEventListener("message", async (event: MessageEvent) => {
     if (event.source !== window) return;
-    if ((event.data as { ns?: string }).ns !== NS_BG) return;
+    if ((event.data as { ns?: string }).ns !== EXTENSION_BRIDGE_NS) return;
 
     const { type } = event.data as { type: string };
 
@@ -501,4 +501,4 @@ import { buildReportUrl, buildTrackUrl, extractArtistId, extractUsername } from 
   console.log("[AI Blocker] page-script ready — waiting for Spotify auth token…");
 
   setupArtistPageObserver();
-})();
+});

@@ -1,4 +1,4 @@
-# Spotify AI Blocker — Chrome Extension
+# Spotify AI Blocker — Chrome/Edge Extension
 
 [![CI](https://github.com/trevonerd/spotify-ai-blocker-chrome-extension/actions/workflows/ci.yml/badge.svg)](https://github.com/trevonerd/spotify-ai-blocker-chrome-extension/actions/workflows/ci.yml)
 
@@ -6,9 +6,9 @@ If you've been using Spotify for a while you've probably noticed something annoy
 
 There's already a great Tampermonkey script by [CennoxX](https://github.com/CennoxX/spotify-ai-blocker) that solves this using a crowdsourced list of AI artists. The problem is that Tampermonkey is a power-user thing — you need to install an extension, paste a script, figure out how it works... most people give up before finishing.
 
-This project brings the exact same functionality as a **native Chrome extension**: install it, open Spotify, done. Nothing else.
+This project brings the exact same functionality as a **native Chromium extension** built with WXT: install it, open Spotify, done. Nothing else.
 
-> ⚠️ **Work in progress** — Working towards a stable release to publish on the Chrome Web Store. For now it installs in developer mode (instructions below, it's not complicated).
+> ⚠️ **Store release note** — The WXT Chrome/Edge builds are production-packaged, but store publication still requires the usual Chrome Web Store / Edge Add-ons listing review.
 
 > ⚠️ **Disclaimer** — Spotify does not provide an official API for blocking artists. This userscript mimics requests made by Spotify's web player and may violate Spotify's Terms of Service. Use at your own risk.
 
@@ -34,13 +34,26 @@ Or if you use git:
 git clone https://github.com/trevonerd/spotify-ai-blocker-chrome-extension.git
 ```
 
-### Step 2 — Open Chrome's extensions page
+### Step 2 — Build and open the extensions page
 
-In Chrome's address bar type:
+From the project folder:
+
+```bash
+pnpm install
+pnpm build
+```
+
+Then open your browser's extensions page.
+
+Chrome:
 ```
 chrome://extensions
 ```
-and press Enter.
+
+Edge:
+```
+edge://extensions
+```
 
 ### Step 3 — Enable Developer Mode
 
@@ -48,7 +61,7 @@ In the top right corner you'll see a toggle called **"Developer mode"**. Turn it
 
 ### Step 4 — Load the extension
 
-Click **"Load unpacked"**. A file picker opens: navigate to the `spotify-ai-blocker-chrome-extension` folder you extracted and select it (the folder itself, not the files inside).
+Click **"Load unpacked"**. A file picker opens: navigate to `.output/chrome-mv3` for Chrome or `.output/edge-mv3` for Edge and select that folder.
 
 The extension icon will appear in Chrome's toolbar. If you don't see it, click the puzzle icon 🧩 and pin it.
 
@@ -62,13 +75,13 @@ Go to [open.spotify.com](https://open.spotify.com) and log in. The extension sta
 
 ## How to use it
 
-**The popup** (click the extension icon in Chrome):
+**The popup** (click the extension icon in Chrome or Edge):
 - See how many artists you've blocked and how many are in the total list
 - See when the last automatic block run happened
 - When a blocking run is active, a Spotify-green progress bar shows real-time progress (e.g. "Blocking 142/850...")
 - Force a manual run with **"Run now"** — clicking it shows a confirmation prompt to prevent accidental API spam
 - If a song is playing, you can see the current track and report the artist as AI with one click
-- While a blocking run is active, the extension icon displays a hourglass badge (⏳) with an orange background, which clears automatically when the run completes
+- While a blocking run is active, the extension icon displays a running badge with an orange background, which clears automatically when the run completes
 
 **Reporting an AI artist:**
 1. Play a song by the suspicious artist
@@ -104,20 +117,17 @@ It uses the same internal endpoint Spotify uses when you manually block an artis
 
 ```
 spotify-ai-blocker-chrome-extension/
-├── manifest.json              # MV3 manifest
+├── wxt.config.ts              # WXT config and generated-manifest source
+├── public/                    # Static extension icons copied by WXT
 ├── src/
-│   ├── background.ts          # Service worker: alarms, CSV cache, context menu, cover art
-│   ├── injector.ts            # Content script: bridge between page context ↔ extension runtime
-│   ├── page-script.ts         # Page context: fetch interceptor, block API, toast notifications
-│   └── utils/
-│       └── csv.ts             # CSV parsing utilities (unit-tested)
-├── popup/
-│   ├── popup.html
-│   ├── popup.ts               # Popup UI logic (TypeScript + TSDoc)
-│   └── utils/
-│       └── html.ts            # HTML escaping helper (unit-tested)
-├── dist/                      # Built Chrome extension (output of `pnpm build`)
-├── vite.config.ts             # Vite + @crxjs/vite-plugin manifest-driven build
+│   ├── entrypoints/
+│   │   ├── background.ts      # Service worker: alarms, CSV cache, context menu, cover art
+│   │   ├── spotify.content.ts # Content script bridge between page context and runtime
+│   │   ├── page-script.ts     # Main-world script: fetch interceptor, block API, toasts
+│   │   └── popup/             # Popup HTML, CSS, UI state and render helpers
+│   ├── shared/                # Typed messages and storage adapter
+│   └── utils/                 # Pure utilities and unit tests
+├── .output/                   # WXT build output (`chrome-mv3`, `edge-mv3`)
 ├── tsconfig.json              # TypeScript compiler options
 ├── biome.json                 # Biome (lint + format) configuration
 ├── .husky/                    # Husky Git hooks (pre-commit, commit-msg)
@@ -129,28 +139,28 @@ spotify-ai-blocker-chrome-extension/
 
 MV3 content scripts run in an isolated JS world — they can't access `window.fetch` or any of the page's variables. To capture Spotify's Bearer token (which travels in the headers of its fetch calls) we need to execute code in the real page context.
 
-Solution: `injector.ts` (content script) injects `page-script.ts` as a `<script src>` tag, which runs in the actual page context. The two communicate via `window.postMessage` with a namespaced protocol (`SAB_PAGE` / `SAB_BG`) and unique request IDs to avoid race conditions.
+Solution: `spotify.content.ts` is a WXT content script that injects `page-script.ts` as an unlisted main-world script. The two communicate via `window.postMessage` with a namespaced protocol (`SAB_PAGE` / `SAB_BG`) and unique request IDs to avoid race conditions.
 
 ### Message flow
 
 ```
-popup.ts
-  └─ chrome.tabs.sendMessage(FORCE_BLOCK_RUN)
-       └─ injector.ts (chrome.runtime.onMessage)
+popup/main.ts
+  └─ browser.tabs.sendMessage(FORCE_BLOCK_RUN)
+       └─ spotify.content.ts (browser.runtime.onMessage)
             └─ window.postMessage(SAB_BG, FORCE_BLOCK_RUN)
                  └─ page-script.ts (window message listener)
                       └─ main(forced=true)
-                           ├─ bridgeRequest(FETCH_CSV) → injector → background → GitHub
+                           ├─ bridgeRequest(FETCH_CSV) → content bridge → background → GitHub
                            └─ fetch(spclient.wg.spotify.com/collection/v2/write)
 
 Progress reporting:
 page-script.ts main()
   └─ bridgeNotify(PROGRESS_UPDATE, {current, total, status})
-       └─ injector.ts forwards to extension runtime
+       └─ spotify.content.ts forwards to extension runtime
             └─ background.ts
-                 ├─ Sets badge text (⏳ while running, cleared when done)
-                 ├─ Persists progress to chrome.storage.local
-                 └─ Forwards to popup.ts (if open)
+                 ├─ Sets badge text while running, cleared when done
+                 ├─ Persists progress through WXT local storage
+                 └─ Forwards to popup/main.ts (if open)
                       └─ Updates progress bar in real-time
 ```
 
@@ -159,7 +169,8 @@ page-script.ts main()
 The project is built with a modern TypeScript toolchain:
 
 - **Package manager**: `pnpm`
-- **Bundler**: `Vite` + `@crxjs/vite-plugin` (manifest-driven MV3 builds)
+- **Extension framework**: `WXT` (file-based entrypoints, generated MV3 manifest, dev server, zip)
+- **Bundler**: `Vite` through WXT
 - **Language**: `TypeScript` (all new code, comments and TSDoc in English)
 - **Lint/format**: `Biome` (`biome.json`)
 - **Git hooks**: `Husky` + `Commitlint` (conventional commits)
@@ -168,39 +179,62 @@ The project is built with a modern TypeScript toolchain:
 Available scripts in `package.json`:
 
 ```bash
-# Start a dev build (useful together with Chrome's "Load unpacked" pointing to dist/)
+# Start WXT dev mode for Chrome or Edge
 pnpm dev
+pnpm dev:edge
 
-# Production build into dist/ (ready to load or zip for Chrome Web Store)
+# Production builds
 pnpm build
+pnpm build:edge
+pnpm build:all
 
-# Lint + format checks via Biome
+# Create store-ready zips in .output/
+pnpm zip
+pnpm zip:edge
+pnpm zip:all
+
+# Quality gates
 pnpm lint
+pnpm typecheck
+pnpm test
+pnpm test:manifest
+pnpm test:wxt
+pnpm verify
+
+# Format files via Biome
 pnpm format
 
-# Run unit tests
-pnpm test
+# Clean generated WXT files and caches
+pnpm clean
+
+# Store submission helpers
+pnpm submit:init
+pnpm submit:dry-run
+pnpm submit
 ```
 
 ### Testing
 
-Unit tests are written with **Vitest** and focus on pure utilities:
+Unit tests are written with **Vitest** and focus on pure utilities plus WXT integration boundaries:
 
 - `src/utils/csv.test.ts` – tests the CSV parser used by the page script.
-- `popup/utils/html.test.ts` – tests the HTML escaping helper used in the popup UI.
+- `src/utils/html.test.ts` – tests the HTML escaping helper used in the popup UI.
+- `src/shared/messages.test.ts` – tests runtime/page message guards.
+- `src/shared/storage.test.ts` – tests the WXT storage adapter and preserved local keys.
+- `src/entrypoints/popup/view-model.test.ts` – tests popup count, last-run and progress view helpers.
 
 To run the test suite locally:
 
 ```bash
 pnpm install
-pnpm test
+pnpm verify
 ```
 
 Git hooks (via Husky) can be extended to include `pnpm test` in the `pre-commit` step to ensure tests stay green before every commit.
 
 ### Reloading during development
 
-After editing a file: go to `chrome://extensions` → click the reload icon on the extension → reload Spotify.
+During development, run `pnpm dev` and use the browser instance WXT opens. For production-style local testing, run `pnpm build:all`, load `.output/chrome-mv3` or `.output/edge-mv3`, then reload the extension and Spotify after edits.
 
 For `page-script.js` logs: open Spotify DevTools (F12) → Console, filter by `[AI Blocker]`.
 For service worker logs: `chrome://extensions` → "Service worker" → Inspect.

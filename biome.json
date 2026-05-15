@@ -15,6 +15,6 @@
   "files": {
     "ignoreUnknown": false,
     "maxSize": 1048576,
-    "includes": ["src/**/*", "popup/**/*"]
+    "includes": ["src/**/*", "scripts/**/*", ".github/**/*", "wxt.config.ts"]
   }
 }

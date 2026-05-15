@@ -8,7 +8,7 @@ on:
 
 jobs:
   ci:
-    name: lint / tsc / test
+    name: verify WXT build
     runs-on: ubuntu-latest
 
     steps:
@@ -26,11 +26,5 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint
-        run: pnpm lint
-
-      - name: TypeScript
-        run: pnpm test:ts
-
-      - name: Test
-        run: pnpm test
+      - name: Verify
+        run: pnpm verify

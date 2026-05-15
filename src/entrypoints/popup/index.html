@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spotify AI Artist Blocker</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="header">
+      <div class="header-icon-wrap" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="#000">
+          <title>Spotify AI Blocker</title>
+          <path
+            d="M6 12c0-1.296.41-2.496 1.11-3.477l8.366 8.368A6 6 0 0 1 6 12m10.89 3.476L8.524 7.11a6 6 0 0 1 8.367 8.367z"
+          />
+          <path
+            d="M1 12C1 5.925 5.925 1 12 1s11 4.925 11 11-4.925 11-11 11S1 18.075 1 12m11-8a8 8 0 1 0 0 16 8 8 0 0 0 0-16"
+          />
+        </svg>
+      </div>
+      <div>
+        <div class="header-title">Spotify AI Artist Blocker</div>
+        <div class="header-sub">Keeping your music human</div>
+      </div>
+    </header>
+
+    <div id="el-warning" class="warning" hidden>
+      Open <strong>Spotify Web Player</strong> to use all features.
+    </div>
+
+    <section class="section" aria-labelledby="blocklist-title">
+      <div class="section-label" id="blocklist-title">Blocklist</div>
+
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-value" id="el-blocked">-</div>
+          <div class="stat-label">Artists blocked</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="el-csv">-</div>
+          <div class="stat-label">On the list</div>
+        </div>
+      </div>
+
+      <div class="last-run-row">
+        <div class="dot" id="el-dot" aria-hidden="true"></div>
+        <span id="el-lastrun">Loading</span>
+      </div>
+
+      <button class="btn btn-green btn-full" id="el-run" type="button">Run now</button>
+
+      <div id="el-confirm-run" class="confirm-run" hidden>
+        <div class="confirm-copy">Run the blocker now?</div>
+        <div class="confirm-actions">
+          <button class="btn btn-green btn-compact" id="el-confirm-run-yes" type="button">
+            Run
+          </button>
+          <button class="btn btn-ghost btn-compact" id="el-confirm-run-no" type="button">
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      <div id="el-progress" class="progress-wrap" hidden>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="el-progress-fill"></div>
+        </div>
+        <div class="progress-label" id="el-progress-label">Starting...</div>
+      </div>
+      <div class="run-note" id="el-runnote">Automatic every 24 h and on Spotify page load</div>
+    </section>
+
+    <div class="divider"></div>
+
+    <section class="section" aria-labelledby="now-playing-title">
+      <div class="section-label" id="now-playing-title">Now Playing</div>
+
+      <div class="now-playing-card empty" id="el-npcard">
+        <span class="np-empty">Loading</span>
+      </div>
+
+      <button class="btn btn-report btn-full" id="el-report" type="button" disabled>
+        Report as AI Artist
+      </button>
+    </section>
+
+    <div class="divider"></div>
+
+    <section class="section repo-section">
+      <a
+        class="btn btn-ghost btn-full btn-sm"
+        href="https://github.com/trevonerd/spotify-ai-blocker-chrome-extension"
+        target="_blank"
+        rel="noopener"
+      >
+        Extension on GitHub
+      </a>
+    </section>
+
+    <footer class="footer">
+      Based on
+      <a href="https://github.com/CennoxX/spotify-ai-blocker" target="_blank" rel="noopener">
+        CennoxX/spotify-ai-blocker
+      </a>
+      · MIT License · <span id="el-version"></span>
+    </footer>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

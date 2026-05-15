@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Migrated the extension build fully to WXT with file-based entrypoints, generated MV3 manifest, WXT zip output, and Chrome/Edge scripts.
+- Refactored runtime messaging and storage access around shared TypeScript types and WXT storage while preserving existing extension local storage keys.
+- Split and polished the popup UI with separate CSS, testable view helpers, better empty/error states, and inline manual-run confirmation.
+- Replaced custom release shell scripting with WXT build, zip, submit, manifest, and purity-check package scripts.
+
+### Fixed
+
+- Registered the Spotify right-click report context menu from the background service worker.
+
 ## [0.4.2] - 2026-05-05
 
 ### Added

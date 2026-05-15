@@ -9,7 +9,7 @@
     // See also https://aka.ms/tsconfig/module
     "module": "esnext",
     "target": "esnext",
-    "types": ["chrome", "node"],
+    "types": ["node", "wxt/vite-builder-env"],
     "lib": ["dom", "dom.iterable", "esnext"],
     // For nodejs:
     // "lib": ["esnext"],
@@ -45,7 +45,7 @@
     "moduleResolution": "bundler",
     "allowJs": false,
     "resolveJsonModule": true,
-    "noEmit": false
+    "noEmit": true
   },
-  "include": ["src/**/*.ts", "popup/**/*.ts"]
+  "include": ["src/**/*.ts", "wxt.config.ts", ".wxt/**/*.d.ts"]
 }
